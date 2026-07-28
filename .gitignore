@@ -1,0 +1,7 @@
+build/
+*.3dsx
+*.smdh
+*.elf
+*.cia
+.DS_Store
+__pycache__/
