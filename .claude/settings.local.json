@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:syncterm.bbsdev.net)",
+      "Bash(ls /opt/devkitpro/tools/bin/ | head -30; echo ---; ls /opt/devkitpro/examples/3ds/templates/application/)",
+      "Read(//opt/devkitpro/examples/3ds/graphics/gpu/**)",
+      "Read(//opt/devkitpro/examples/3ds/graphics/gpu/simple_tri/source/**)",
+      "Bash(curl -s \"https://api.github.com/search/repositories?q=sbbs+synchronet&per_page=5\")",
+      "Bash(python3 -c \"import json,sys; [print\\(r['full_name'], r['pushed_at'], r.get\\('description',''\\)[:60]\\) for r in json.load\\(sys.stdin\\)['items']]\")",
+      "Bash(nc -z -w2 127.0.0.1 2323)",
+      "Bash(/usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate)",
+      "Bash(/usr/libexec/ApplicationFirewall/socketfilterfw --getblockall)",
+      "Bash(pkill -f stress_server.py)",
+      "Bash(python3 -u /Volumes/Crucial2TB/Projects/3dBBS/tests/stress_server.py --port 2323)",
+      "Bash(awk '{for\\(i=1;i<=NF;i++\\) if\\($i~/^jobs=|^playing=|^drains=/\\) printf \"%s \", $i; print \"\"}')"
+    ]
+  }
+}
