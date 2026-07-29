@@ -44,6 +44,7 @@ GFXBUILD	:=	$(BUILD)
 APP_TITLE		:=	3dBBS
 APP_DESCRIPTION	:=	BBS terminal with stereoscopic 3D extensions
 APP_AUTHOR		:=	chairmanmow
+ICON			:=	assets/icon.png
 
 #---------------------------------------------------------------------------------
 # options for code generation
