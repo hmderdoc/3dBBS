@@ -42,4 +42,9 @@ void scene3dSceneClear(void);   // also called on disconnect
 
 bool scene3dActive(void);       // any instance live? (main: pick composite path)
 
+// Per-text-layer stereo disparity in screen px for the eye rendered with
+// this signed iod (matches the scene projection: same world depth => same
+// disparity as a scene vertex). depths[] are world units behind the glass.
+void scene3dTextShifts(float iod, const float* depths, int n, float* outPx);
+
 #endif

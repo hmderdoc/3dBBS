@@ -66,7 +66,9 @@ Deploy over Wi-Fi with the Homebrew Launcher netloader:
 Working: terminal core (truecolor, iCE, DECSTBM, dynamic geometry + NAWS),
 SyncTerm-compatible identification and query surface, APC audio engine with
 JIT streaming, sixel with correct scroll/overwrite lifetime, 3D scene
-protocol v1, three-thread architecture (net+render / APC worker / SD flush).
+protocol v1, text depth layers (protocol 0.3 — terminal text at real stereo
+depths, PROTOCOL.md §7), three-thread architecture (net+render / APC worker /
+SD flush).
 
 Dev-only scaffolding still baked in (strip before any public release): perf
 overlay, UDP telemetry beacon, L-button test probe, `LocalTest`/`FL-Proxy`

@@ -30,7 +30,7 @@ u32 termCurBg(const Terminal* t)
 
 static TermCell blankCell(const Terminal* t)
 {
-	TermCell c = { termCurFg(t), termCurBg(t), ' ', 0 };
+	TermCell c = { termCurFg(t), termCurBg(t), ' ', 0, t->activeLayer };
 	return c;
 }
 
@@ -84,9 +84,28 @@ void termReset(Terminal* t)
 	t->mouseX10 = t->mouseNormal = t->mouseSGR = false;
 	t->marginTop = 0;
 	t->marginBot = t->rows - 1;
+	t->activeLayer = 0;
+	memset(t->layerDepth, 0, sizeof(t->layerDepth));
 	fillCells(t, 0, t->cols * t->rows, blankCell(t));
 	if (t->onClearAll)
 		t->onClearAll();
+	t->rev++;
+}
+
+void termSelectLayer(Terminal* t, int layer)
+{
+	if (layer < 0) layer = 0;
+	if (layer >= TERM_TEXT_LAYERS) layer = TERM_TEXT_LAYERS - 1;
+	t->activeLayer = (u8)layer;
+}
+
+void termSetLayerDepth(Terminal* t, int layer, float depth)
+{
+	if (layer < 0 || layer >= TERM_TEXT_LAYERS)
+		return;
+	if (depth < 0.0f) depth = 0.0f;
+	if (depth > 18.0f) depth = 18.0f;
+	t->layerDepth[layer] = depth;
 	t->rev++;
 }
 
@@ -141,6 +160,7 @@ void termPutGlyph(Terminal* t, u8 ch)
 	c->fg = termCurFg(t);
 	c->bg = termCurBg(t);
 	c->blink = (!t->iceColors && t->blinkAttr) ? 1 : 0;
+	c->layer = t->activeLayer;
 
 	if (t->cx < t->cols - 1) {
 		t->cx++;
