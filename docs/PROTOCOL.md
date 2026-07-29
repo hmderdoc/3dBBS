@@ -17,8 +17,8 @@ for binary), so they survive telnet transparently.
 
 ## 1. Detection
 
-The client identifies as **CTerm 1.332** — the same family as SyncTerm — so
-generic SyncTerm detection works, with two extra probes to distinguish 3dBBS
+The client identifies as **CTerm 1.332** — the same family as SyncTERM — so
+generic SyncTERM detection works, with two extra probes to distinguish 3dBBS
 specifically.
 
 | Probe (BBS sends) | Client replies |
@@ -32,8 +32,8 @@ specifically.
 Protocol 0.3 adds **text depth layers** (§7); gate them on minor >= 3.
 
 On Synchronet with a `*` terminal type, `console.cterm_version` will be
-`1332` after logon — gate SyncTerm-level features on that. To detect 3dBBS
-specifically (e.g. before sending 3D), use either APC probe: real SyncTerm
+`1332` after logon — gate SyncTERM-level features on that. To detect 3dBBS
+specifically (e.g. before sending 3D), use either APC probe: real SyncTERM
 answers `SyncTERM:VER` with its own version string and ignores `3DS:Query`
 entirely (timeout = not 3dBBS).
 
@@ -213,7 +213,7 @@ CSI = Ps ; Pd * z     set layer Ps depth: Pd centi-world-units BEHIND the
 
 ```
 1. (Synchronet does DA autodetect for terminal '*' users automatically)
-2. gate:      console.cterm_version >= 1332   -> SyncTerm-level features OK
+2. gate:      console.cterm_version >= 1332   -> SyncTERM-level features OK
 3. probe:     APC 3DS:Query ST                -> reply => 3dBBS: 3D/audio/sixel all safe
               (minor >= 3 => text depth layers too)
 4. assets:    C;L to dedup, C;S what's missing

@@ -3,10 +3,10 @@
 A BBS terminal for the Nintendo 3DS (homebrew) that renders **stereoscopic 3D
 scenes, streamed audio, and sixel graphics driven by the BBS** over a plain
 telnet connection — while remaining a faithful ANSI-BBS terminal compatible
-with SyncTerm/CTerm conventions.
+with SyncTERM/CTerm conventions.
 
 The client identifies as **CTerm 1.332**, so Synchronet's `*` terminal
-autodetect and existing SyncTerm-aware BBS code work unmodified. On top of
+autodetect and existing SyncTERM-aware BBS code work unmodified. On top of
 that it adds an `APC 3DS:` escape-sequence namespace: a BBS can upload meshes
 (cached and deduplicated), place and animate them, and move a camera — all
 rendered with real stereo depth on the top screen, composited under the
@@ -46,9 +46,29 @@ Deploy over Wi-Fi with the Homebrew Launcher netloader:
   audio + a spinning 3D mesh demo). Doubles as **executable protocol
   documentation**: it emits exactly the byte sequences described in
   docs/PROTOCOL.md.
-- `tests/proxy_server.py` — logging relay between the 3DS and a real BBS;
-  captures APC traffic, sixel payloads, CSI usage census, and the client's
+- `tools/relay.py --debug` — the relay (see below) in wire-logging mode:
+  captures APC traffic, sixel payloads, a CSI usage census, and the client's
   UDP telemetry beacon on one timeline.
+
+## WAN accelerator relay
+
+The 3DS's TCP stack has a fixed 8 KB receive window, which caps sustained
+downloads at `8192 / RTT` — about 45 KB/s from a board 180 ms away (full
+measurements in DESIGN.md §7.5). Interactive use fits under that easily, but
+high-bitrate audio streaming from a distant board does not.
+
+`tools/relay.py` removes the cap by splitting the path: the 3DS connects
+across your LAN (~2 ms, effectively unlimited), and the relay dials the BBS
+with the host machine's real TCP stack. rlogin autologin handshakes pass
+through untouched.
+
+```
+python3 tools/relay.py --host futureland.today --bbs-port 1513 --port 2324
+```
+
+Then point a phonebook entry at the relay machine's LAN IP, port 2324, and
+dial that. Entirely optional — direct connections always work; the relay only
+raises the throughput ceiling.
 
 ## Controls
 
@@ -78,7 +98,7 @@ name|host|port|proto|user|pass      # proto: telnet or rlogin
 Trailing fields are optional (3 fields = telnet, no credentials).
 
 **rlogin autologins**: the stored username and password ride the RFC 1282
-handshake in SyncTerm's field order (password in the client-username slot,
+handshake in SyncTERM's field order (password in the client-username slot,
 username in the server-username slot) — the same convention fTelnet uses, so
 Synchronet logs you straight in. The handshake's terminal-type field is sent
 as `ansi-bbs-cp437-truecolor`, which is what boards key 24-bit colour off.
@@ -87,7 +107,7 @@ Telnet connections do not autologin — credentials are stored but not sent
 (no prompt-matching yet).
 
 > **Credentials are stored in plain text** on the SD card, exactly as
-> SyncTerm's `syncterm.lst` does. Anyone with physical access to the card can
+> SyncTERM's `syncterm.lst` does. Anyone with physical access to the card can
 > read them. Leave the password empty for boards where that matters.
 
 SSH is **not** supported: devkitPro ships `3ds-mbedtls` but no libssh2 for
@@ -96,7 +116,7 @@ SSH is **not** supported: devkitPro ships `3ds-mbedtls` but no libssh2 for
 ## Status / dev notes
 
 Working: terminal core (truecolor, iCE, DECSTBM, dynamic geometry + NAWS),
-SyncTerm-compatible identification and query surface, APC audio engine with
+SyncTERM-compatible identification and query surface, APC audio engine with
 JIT streaming, sixel with correct scroll/overwrite lifetime, 3D scene
 protocol v1, text depth layers (protocol 0.3 — terminal text at real stereo
 depths, PROTOCOL.md §7), three-thread architecture (net+render / APC worker /
@@ -107,5 +127,5 @@ overlay, UDP telemetry beacon, L-button test probe, `LocalTest`/`FL-Proxy`
 phonebook entries with hardcoded dev-machine IPs.
 
 Licensing: vendored Synchronet sources (`vendor/synchronet/`, fonts + CTerm
-spec) are GPL; this project is consequently GPL. A LICENSE file is still TODO
-before publishing.
+spec) are GPL; this project is consequently licensed under the **GNU GPL v2**
+(see [LICENSE](LICENSE)).

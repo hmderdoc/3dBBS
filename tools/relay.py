@@ -1,10 +1,18 @@
 #!/usr/bin/env python3
-"""Logging relay: 3DS -> this Mac -> a real BBS. Captures exact timing and
-volume of the APC audio traffic while the client runs on real hardware.
+"""3dBBS WAN accelerator relay: 3DS -> this machine -> a distant BBS.
 
-Run:  python3 tests/proxy_server.py [--host futureland.today] [--bbs-port 23]
-                                    [--port 2324]
-Then connect the 3DS to the FL-Proxy phonebook entry.
+Why this exists: the 3DS's TCP stack has a fixed 8KB receive window, which
+caps sustained downloads at 8192/RTT — ~45KB/s to a 180ms-away board (see
+DESIGN.md section 7.5). A relay on your LAN removes that cap: the 3DS<->relay
+leg is ~2ms RTT (no longer window-bound) and the relay<->BBS leg uses this
+machine's real TCP stack. rlogin handshakes (autologin) pass through
+untouched. Run it, then point a phonebook entry at this machine's LAN IP.
+
+Run:  python3 tools/relay.py [--host futureland.today] [--bbs-port 1513]
+                             [--port 2324] [--debug]
+
+--debug additionally logs APC/sixel/CSI wire traffic and listens for the
+client's UDP telemetry beacon (dev builds only) — the mode the test rig uses.
 """
 import argparse, re, socket, threading, time
 
@@ -114,9 +122,12 @@ def main():
     ap.add_argument("--host", default="futureland.today")
     ap.add_argument("--bbs-port", type=int, default=1513)
     ap.add_argument("--port", type=int, default=2324)
+    ap.add_argument("--debug", action="store_true",
+                    help="log APC/sixel/CSI wire traffic + telemetry beacon")
     args = ap.parse_args()
 
-    threading.Thread(target=telemetry_listener, daemon=True).start()
+    if args.debug:
+        threading.Thread(target=telemetry_listener, daemon=True).start()
 
     srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -136,13 +147,14 @@ def main():
         for s in (cli, bbs):
             s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         down, up = [0], [0]
-        census = {}
+        census = {} if args.debug else None
         threading.Thread(target=pump,
-                         args=("bbs->3ds", bbs, cli, MARKS_S2C, down, True, census),
+                         args=("bbs->3ds", bbs, cli, MARKS_S2C if args.debug else [],
+                               down, args.debug, census),
                          daemon=True).start()
         threading.Thread(target=pump,
-                         args=("3ds->bbs", cli, bbs, MARKS_C2S, up, False, None,
-                               True),
+                         args=("3ds->bbs", cli, bbs, MARKS_C2S if args.debug else [],
+                               up, False, None, args.debug),
                          daemon=True).start()
 
         def rates(down=down, up=up, census=census):

@@ -1,6 +1,6 @@
 # 3dBBS — a Nintendo 3DS BBS terminal with a stereoscopic 3D side-channel
 
-A homebrew 3DS app that is a real ANSI-BBS terminal (SyncTerm-lineage), plus a
+A homebrew 3DS app that is a real ANSI-BBS terminal (SyncTERM-lineage), plus a
 custom escape-sequence protocol that lets a BBS render true stereoscopic 3D
 scenes on the top screen. Installable on a stock (CFW) 3DS by scanning a QR code.
 
@@ -16,18 +16,18 @@ scenes on the top screen. Installable on a stock (CFW) 3DS by scanning a QR code
 | Custom escape sequences | Solid | CTerm already defines DCS/OSC/APC extension mechanisms; we add our own APC namespace |
 | Capability detection | Solid | CTerm-style Device Attributes reply (`CSI < 0 c` → `CSI = ... c`); we answer with our own ID string |
 | QR-code install | Solid | Build a `.cia`, host it (GitHub Releases), FBI's Remote Install scans a QR of the URL |
-| SSH | Later | SyncTerm uses cryptlib; on 3DS this means porting mbedtls/libssh2. Telnet first. |
+| SSH | Later | SyncTERM uses cryptlib; on 3DS this means porting mbedtls/libssh2. Telnet first. |
 
-## 2. The SyncTerm question: port it, or mine it?
+## 2. The SyncTERM question: port it, or mine it?
 
-SyncTerm lives in the Synchronet source tree (`sbbs/src/syncterm`) and depends on:
+SyncTERM lives in the Synchronet source tree (`sbbs/src/syncterm`) and depends on:
 
 - **ciolib** (`src/conio`) — console I/O abstraction with SDL/X11/ncurses/Win32 drivers; contains **cterm.c**, the actual ANSI-BBS/CTerm terminal state machine
 - **xpdev** — cross-platform threads/sockets/filesystem shims
 - **cryptlib** — SSH/TLS
 - SDL2 — the usual desktop video/audio driver
 
-A wholesale port is the wrong shape: SyncTerm is multithreaded around xpdev
+A wholesale port is the wrong shape: SyncTERM is multithreaded around xpdev
 threads, and ciolib's drivers assume a desktop windowing system. The valuable,
 portable core is **cterm.c + the ciolib character-buffer model + the CTerm
 protocol spec**.
@@ -44,7 +44,7 @@ assumptions. What we vendor instead:
 - `cterm.txt` / `cterm.adoc` — the behavioral spec our parser implements
 Source: github.com/SynchronetBBS/sbbs mirror of gitlab.synchro.net (GPL).
 
-Licensing: Synchronet/SyncTerm source is GPL — vendoring cterm makes this
+Licensing: Synchronet/SyncTERM source is GPL — vendoring cterm makes this
 project GPL. Fine for homebrew; we ship source anyway.
 
 ## 3. Architecture
@@ -110,18 +110,18 @@ reports for rows/cols and a UTF-8 probe. So:
 
 - `CSI 0 c` and `CSI < 0 c` → `CSI = 67;84;101;114;109;1;332 c` (CTerm 1.332,
   the revision our behavior is implemented against)
-- telnet TTYPE → `"syncterm"` (SyncTerm's ANSI-BBS default)
+- telnet TTYPE → `"syncterm"` (SyncTERM's ANSI-BBS default)
 - `APC SyncTERM:VER ST` → `APC SyncTERM:VER;3dBBS <ver> ST` — this is how a
-  BBS distinguishes 3dBBS from real SyncTerm
+  BBS distinguishes 3dBBS from real SyncTERM
 - `APC 3DS:Query ST` → `APC 3DS:Ver;maj;min ST` — same, in our namespace
 
-This makes existing SyncTerm-aware BBS code (Synchronet feature gates on
+This makes existing SyncTERM-aware BBS code (Synchronet feature gates on
 `cterm_version`) work unmodified.
 
 ### 4.2 Command channel: `APC 3DS: ... ST` (v1 implemented 2026-07)
 
 APC strings are invisible to terminals that don't parse them — old clients
-skip them safely. Assets travel through the standard SyncTerm cache
+skip them safely. Assets travel through the standard SyncTERM cache
 (`SyncTERM:C;S`, RAM-first with MD5 dedup via `C;L`); the `3DS:` namespace
 drives the scene:
 
@@ -148,12 +148,12 @@ draws over it with black-background cells transparent — text floats over the
 3D world. Retained-mode: after upload, an animated scene costs a few dozen
 bytes of camera/transform updates.
 
-Sound and file caching use **SyncTerm's own protocol** (implemented 2026-07),
+Sound and file caching use **SyncTERM's own protocol** (implemented 2026-07),
 not a 3DS namespace: `SyncTERM:C;S`/`C;L` (store/list cache, MD5 dedup),
 `SyncTERM:A;LoadBlob/Load/Synth/Copy/Queue/Flush/Volume/Update` (patch slots +
 ndsp channels 2-15), `SyncTERM:Q;*` feature queries (we truthfully advertise
 WAV/PCM decode only), and `CSI = 7 n` channel-state reports. The 3D verbs
-above stay in the 3DS: namespace since they have no SyncTerm equivalent.
+above stay in the 3DS: namespace since they have no SyncTERM equivalent.
 
 ### 4.2b Standard-sequence capabilities (not APC — spec'd by CTerm/xterm already)
 
@@ -271,7 +271,7 @@ Consequences:
 
 - **Phase 0 — scaffold:** toolchain install, hello-triangle + hello-sockets .3dsx running in Azahar
 - **Phase 1 — it's a terminal:** telnet NVT, cterm-based ANSI-BBS emulation, CP437 font render, touch keyboard, phonebook. *Success bar: log into a real BBS and it looks right.*
-- **Phase 2 — it's SyncTerm-ish:** zoom/pan, loadable fonts (`DCS CTerm:Font`), ANSI music, scrollback, DA replies
+- **Phase 2 — it's SyncTERM-ish:** zoom/pan, loadable fonts (`DCS CTerm:Font`), ANSI music, scrollback, DA replies
 - **Phase 3 — it's 3D:** APC 3DS: parser, citro3d scene layer, stereo depth, SD asset cache, `3ds.js` server lib + demo door
 - **Phase 4 — ship:** .cia packaging, icon/banner, QR release pipeline (CI), UniStore listing
 

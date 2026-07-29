@@ -136,6 +136,6 @@ them.
 `tests/stress_server.py --port 2323` speaks the whole protocol at a
 connecting client (audio melody, ANSI storm, and the `send_3d_demo` pyramid
 — a complete literal example of §2/§6 byte sequences to crib from).
-`tests/proxy_server.py` relays a real BBS session while logging every APC,
+`tools/relay.py --debug` relays a real BBS session while logging every APC,
 sixel payload, and CSI census entry — point your board through it and you
 can read back exactly what your library emitted.

@@ -12,7 +12,8 @@
       "Bash(/usr/libexec/ApplicationFirewall/socketfilterfw --getblockall)",
       "Bash(pkill -f stress_server.py)",
       "Bash(python3 -u /Volumes/Crucial2TB/Projects/3dBBS/tests/stress_server.py --port 2323)",
-      "Bash(awk '{for\\(i=1;i<=NF;i++\\) if\\($i~/^jobs=|^playing=|^drains=/\\) printf \"%s \", $i; print \"\"}')"
+      "Bash(awk '{for\\(i=1;i<=NF;i++\\) if\\($i~/^jobs=|^playing=|^drains=/\\) printf \"%s \", $i; print \"\"}')",
+      "WebFetch(domain:www.3dbrew.org)"
     ]
   }
 }
