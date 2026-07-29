@@ -113,7 +113,49 @@ def make_banner(path):
     im.save(path)
 
 
+def make_jingle(path, rate=22050):
+    """~1.3s dial-up homage for the HOME-menu banner: two DTMF digits, a
+    carrier chirp, and a little connect blip. 16-bit mono WAV."""
+    import struct
+    import wave
+
+    samples = []
+
+    def tone(freqs, dur, amp=0.30, decay=3.0):
+        n = int(rate * dur)
+        for i in range(n):
+            t = i / rate
+            v = sum(math.sin(2 * math.pi * f * t) for f in freqs) / len(freqs)
+            samples.append(v * amp * math.exp(-decay * i / n))
+
+    def silence(dur):
+        samples.extend([0.0] * int(rate * dur))
+
+    tone([697, 1477], 0.10)          # DTMF "3"
+    silence(0.03)
+    tone([941, 1477], 0.10)          # DTMF "#"
+    silence(0.05)
+    n = int(rate * 0.45)             # carrier chirp: 600 Hz -> 2100 Hz
+    phase = 0.0
+    for i in range(n):
+        f = 600 + (2100 - 600) * i / n
+        phase += 2 * math.pi * f / rate
+        env = min(i / (rate * 0.02), 1.0) * (1.0 - i / n * 0.4)
+        samples.append(math.sin(phase) * 0.22 * env)
+    silence(0.04)
+    tone([440, 554, 659], 0.45, amp=0.32, decay=5.0)   # connected: A major
+
+    with wave.open(path, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        w.writeframes(b"".join(
+            struct.pack("<h", int(max(-1.0, min(1.0, s)) * 32000))
+            for s in samples))
+
+
 if __name__ == "__main__":
     make_icon(os.path.join(HERE, "icon.png"))
     make_banner(os.path.join(HERE, "banner.png"))
-    print("wrote assets/icon.png (48x48), assets/banner.png (256x128)")
+    make_jingle(os.path.join(HERE, "banner.wav"))
+    print("wrote assets/icon.png, assets/banner.png, assets/banner.wav")

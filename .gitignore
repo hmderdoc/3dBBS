@@ -5,3 +5,4 @@ build/
 *.cia
 .DS_Store
 __pycache__/
+tools/bin/

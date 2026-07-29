@@ -170,11 +170,26 @@ ifneq ($(ROMFS),)
 	export _3DSXFLAGS += --romfs=$(CURDIR)/$(ROMFS)
 endif
 
-.PHONY: all clean
+.PHONY: all clean cia
 
 #---------------------------------------------------------------------------------
 all: $(BUILD) $(GFXBUILD) $(DEPSDIR) $(ROMFS_T3XFILES) $(T3XHFILES)
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
+
+#---------------------------------------------------------------------------------
+# CIA packaging (QR-installable). Build with: make RELEASE=1 cia
+# Tools default to tools/bin (see README); CI overrides with plain names.
+MAKEROM		?=	$(TOPDIR)/tools/bin/makerom
+BANNERTOOL	?=	$(TOPDIR)/tools/bin/bannertool
+
+cia: all
+	$(BANNERTOOL) makebanner -i assets/banner.png -a assets/banner.wav \
+		-o $(BUILD)/banner.bnr > /dev/null
+	$(BANNERTOOL) makesmdh -s "$(APP_TITLE)" -l "$(APP_DESCRIPTION)" \
+		-p "$(APP_AUTHOR)" -i assets/icon.png -o $(BUILD)/icon.icn > /dev/null
+	$(MAKEROM) -f cia -o $(TARGET).cia -rsf assets/cia.rsf -target t \
+		-elf $(TARGET).elf -icon $(BUILD)/icon.icn -banner $(BUILD)/banner.bnr
+	@echo built ... $(TARGET).cia
 
 $(BUILD):
 	@mkdir -p $@

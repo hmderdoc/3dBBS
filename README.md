@@ -37,6 +37,25 @@ Deploy over Wi-Fi with the Homebrew Launcher netloader:
 3dslink -a <3ds-ip> 3dBBS.3dsx
 ```
 
+### Release packaging (.cia + QR install)
+
+```
+make RELEASE=1 cia      # 3dBBS.cia, dev scaffolding stripped
+```
+
+Needs `makerom` and `bannertool` in `tools/bin/` (not committed —
+makerom from [Project_CTR](https://github.com/3DSGuy/Project_CTR/releases)
+releases, bannertool built from
+[carstene1ns/3ds-bannertool](https://github.com/carstene1ns/3ds-bannertool)).
+`tools/make_qr.py <cia-url> qr.png` produces the FBI Remote-Install QR.
+
+**Releases are automated**: pushing a tag `v*` runs
+`.github/workflows/release.yml`, which builds the RELEASE `.cia`/`.3dsx`
+in the devkitPro container, generates the QR pointing at the release
+asset, and publishes all three as individual release assets — the layout
+[Universal-DB](https://github.com/Universal-Team/db) consumes for
+Universal-Updater listings.
+
 ## Testing
 
 - `tests/host/run.sh` — host-native test suite for the terminal core
