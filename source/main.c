@@ -374,12 +374,12 @@ int main(void)
 				char tele[192];
 				snprintf(tele, sizeof(tele),
 				         "f=%.1fms ring=%d rx=%lu/s jobs=%lu(%luK) "
-				         "playing=%03lx drains=%lu conn=%d rcvbuf=%d "
+				         "playing=%03lx drains=%lu conn=%d rcvbuf=%d hs=%d "
 				         "six=%lu/%lu/%lu/%lu df=%lu %dx%d live=%d clr=%lu",
 				         frameMsAvg, ringBytes, (unsigned long)rxRate,
 				         (unsigned long)jobs, (unsigned long)(jobB / 1024),
 				         (unsigned long)mask, (unsigned long)drains,
-				         conn ? 1 : 0, telnetRcvBuf(),
+				         conn ? 1 : 0, telnetRcvBuf(), telnetRloginSent(),
 				         (unsigned long)sxSeen, (unsigned long)sxSub,
 				         (unsigned long)sxTex, (unsigned long)sxTexFail,
 				         (unsigned long)sxFail, sxW, sxH, sxLive,

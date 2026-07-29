@@ -61,6 +61,7 @@ static int ringHead, ringTail; // consume at head, produce at tail
 static int ringCount;
 static u32 totalRx;            // cumulative bytes drained (perf overlay)
 static int grantedRcvBuf;      // SO_RCVBUF the OS actually gave us
+static int rloginSent;         // bytes of the rlogin handshake actually sent
 
 void telnetSetSize(u16 cols, u16 rows)
 {
@@ -158,6 +159,27 @@ bool telnetConnectAs(const char* host, u16 port, ConnProto proto_,
 		return false;
 	}
 
+	// Receive window, requested BEFORE connect: TCP negotiates window
+	// scaling during the handshake, so asking afterwards cannot raise what
+	// the peer may keep in flight. (window / RTT) is the throughput cap —
+	// 8KB over the 181ms path to Germany is the ~43KB/s we measured.
+	// Ask before connect (measured: post-connect requests are ignored and
+	// leave the 8KB default, which capped the 181ms path to Germany at
+	// ~43KB/s). Do NOT ask for more than the soc service can actually back
+	// out of its shared buffer — 256KB was granted but produced a socket
+	// that connected and then moved no bytes in either direction. 64KB
+	// allows ~360KB/s at that RTT, far more than a BBS session needs.
+	static const int wanted[] = { 64*1024, 32*1024, 16*1024 };
+	for (unsigned i = 0; i < sizeof(wanted)/sizeof(wanted[0]); i++) {
+		int got = 0;
+		socklen_t rbl = sizeof(got);
+		if (setsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, &wanted[i],
+		               sizeof(wanted[i])) == 0 &&
+		    getsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, &got, &rbl) == 0 &&
+		    got >= wanted[i])
+			break;   // honoured in full; stop asking
+	}
+
 	// Non-blocking connect with a 5s timeout. No poll()/select()/SO_ERROR —
 	// none of those report connect-completion reliably on 3DS soc (measured:
 	// both waits failed sockets the far end had already accepted). Instead,
@@ -186,31 +208,13 @@ bool telnetConnectAs(const char* host, u16 port, ConnProto proto_,
 	}
 
 	// Big receive buffer absorbs audio-blob bursts while frames render;
-	// no Nagle so DSR/query replies go out immediately
-	// TCP throughput on a high-latency link is (receive window / RTT). The
-	// 3DS default window is 8KB, which caps a ~190ms WAN path at ~43KB/s —
-	// measured, and below what a streamed audio door needs. The stack
-	// REJECTS an oversized SO_RCVBUF rather than clamping it, so walk a
-	// ladder down and keep the largest size it actually honours.
-	static const int wanted[] = { 256*1024, 128*1024, 64*1024, 32*1024, 16*1024 };
-	grantedRcvBuf = 0;
-	for (unsigned i = 0; i < sizeof(wanted)/sizeof(wanted[0]); i++) {
-		if (setsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, &wanted[i],
-		               sizeof(wanted[i])) == 0) {
-			int got = 0;
-			socklen_t rbl = sizeof(got);
-			if (getsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, &got, &rbl) == 0 &&
-			    got > grantedRcvBuf) {
-				grantedRcvBuf = got;
-				if (got >= wanted[i])
-					break;   // honoured in full; stop asking
-			}
-		}
-	}
-	if (grantedRcvBuf == 0) {
-		socklen_t rbl = sizeof(grantedRcvBuf);
-		if (getsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, &grantedRcvBuf, &rbl) < 0)
-			grantedRcvBuf = -1;   // report the default we're stuck with
+	// Post-connect readback: the window actually in force, and no Nagle
+	// so DSR/query replies go out immediately
+	{
+		int got = 0;
+		socklen_t rbl = sizeof(got);
+		grantedRcvBuf = (getsockopt(sockfd, SOL_SOCKET, SO_RCVBUF,
+		                            &got, &rbl) == 0) ? got : -1;
 	}
 	int nodelay = 1;
 	setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay));
@@ -222,6 +226,7 @@ bool telnetConnectAs(const char* host, u16 port, ConnProto proto_,
 		char hs[192];
 		int n = 0;
 		hs[n++] = 0;
+		rloginSent = -1;   // set below; telemetry proves the handshake left
 		const char* p = pass ? pass : "";
 		const char* u = user ? user : "";
 		int l = strlen(p);
@@ -232,7 +237,23 @@ bool telnetConnectAs(const char* host, u16 port, ConnProto proto_,
 		memcpy(hs + n, u, l); n += l; hs[n++] = 0;
 		n += snprintf(hs + n, sizeof(hs) - n, "%s/115200",
 		              RLOGIN_TERM_NAME) + 1;
-		rawSend((const u8*)hs, n);
+		// Send the handshake directly so a short/failed write is visible:
+		// rlogin is the only protocol that transmits before the BBS speaks,
+		// so a silent partial send here looks like "rlogin is broken" while
+		// telnet still appears fine.
+		int off = 0;
+		while (off < n) {
+			int w = send(sockfd, hs + off, n - off, 0);
+			if (w < 0) {
+				if (errno == EWOULDBLOCK || errno == EAGAIN) {
+					svcSleepThread(5 * 1000000LL);
+					continue;
+				}
+				break;
+			}
+			off += w;
+		}
+		rloginSent = off;   // == n when the full handshake went out
 		nawsOn = true; // rlogin window changes need no negotiation
 	}
 
@@ -330,6 +351,11 @@ void telnetStats(int* ringBytes, u32* totalRxBytes)
 int telnetRcvBuf(void)
 {
 	return grantedRcvBuf;
+}
+
+int telnetRloginSent(void)
+{
+	return rloginSent;
 }
 
 int telnetRead(u8* out, int cap)

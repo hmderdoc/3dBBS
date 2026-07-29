@@ -55,4 +55,7 @@ void telnetStats(int* ringBytes, u32* totalRxBytes);
 // so it is the number that explains WAN vs LAN throughput gaps.
 int telnetRcvBuf(void);
 
+// Bytes of the rlogin handshake actually written (-1 = not attempted)
+int telnetRloginSent(void);
+
 #endif
