@@ -22,10 +22,11 @@ jobs:
 
       - name: Install packaging tools (makerom, bannertool, segno)
         run: |
-          curl -sL -o /tmp/makerom.zip \
-            https://github.com/3DSGuy/Project_CTR/releases/download/makerom-v0.19.0/makerom-v0.19.0-ubuntu_x86_64.zip
-          unzip -o /tmp/makerom.zip -d /usr/local/bin
-          chmod +x /usr/local/bin/makerom
+          # makerom release binaries also need a newer glibc — build from source
+          git clone --depth 1 --branch makerom-v0.19.0 \
+            https://github.com/3DSGuy/Project_CTR /tmp/Project_CTR
+          make -C /tmp/Project_CTR/makerom -j4 deps all
+          install /tmp/Project_CTR/makerom/bin/makerom /usr/local/bin/makerom
           apt-get update -qq && apt-get install -y -qq python3-pip cmake g++
           # bannertool: release binaries need a newer glibc than this
           # container ships, so build from source (with the VLA-init fix)
