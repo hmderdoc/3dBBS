@@ -69,14 +69,19 @@ static void rewriteFile(void)
 	fclose(f);
 }
 
-static bool ensureEntry(const char* name, const char* host, u16 port)
+// Dev entries are kept pinned to their configured host/port/proto (unlike
+// user entries, which are never touched after creation).
+static bool ensureEntry(const char* name, const char* host, u16 port,
+                        ConnProto proto)
 {
 	for (int i = 0; i < count; i++) {
 		if (!strcmp(entries[i].name, name)) {
-			if (!strcmp(entries[i].host, host) && entries[i].port == port)
+			if (!strcmp(entries[i].host, host) && entries[i].port == port &&
+			    entries[i].proto == proto)
 				return false;
 			strcpy(entries[i].host, host);
 			entries[i].port = port;
+			entries[i].proto = proto;
 			return true;
 		}
 	}
@@ -86,7 +91,7 @@ static bool ensureEntry(const char* name, const char* host, u16 port)
 		snprintf(e->name, sizeof(e->name), "%s", name);
 		snprintf(e->host, sizeof(e->host), "%s", host);
 		e->port = port;
-		e->proto = PROTO_TELNET;
+		e->proto = proto;
 		return true;
 	}
 	return false;
@@ -114,8 +119,12 @@ static void migrateDefaults(void)
 
 static void ensureLocalTest(void)
 {
-	bool changed = ensureEntry(LOCALTEST_NAME, LOCALTEST_HOST, LOCALTEST_PORT);
-	changed |= ensureEntry(FLPROXY_NAME, DEV_HOST, FLPROXY_PORT);
+	bool changed = ensureEntry(LOCALTEST_NAME, LOCALTEST_HOST,
+	                           LOCALTEST_PORT, PROTO_TELNET);
+	// FL-Proxy relays to Futureland's rlogin port, so the client must speak
+	// rlogin for the handshake (and autologin) to pass through
+	changed |= ensureEntry(FLPROXY_NAME, DEV_HOST, FLPROXY_PORT,
+	                       PROTO_RLOGIN);
 	migrateDefaults();
 	markDirty(); // always: persists the migration marker and any change
 	(void)changed;

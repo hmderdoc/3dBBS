@@ -64,18 +64,22 @@ void apcInit(ApcRespondFn respond)
 
 void apcExit(void)
 {
+	// Bounded joins: a worker stuck in SD I/O must not wedge the whole
+	// shutdown (an infinite join here froze the return to hbmenu).
+	const u64 joinTimeout = 3000000000ULL;   // 3s in ns
+
+	workerRun = false;
+	LightEvent_Signal(&qEvent);
+	LightEvent_Signal(&flEvent);
+
 	if (workerThread) {
-		workerRun = false;
-		LightEvent_Signal(&qEvent);
-		threadJoin(workerThread, U64_MAX);
-		threadFree(workerThread);
+		if (R_SUCCEEDED(threadJoin(workerThread, joinTimeout)))
+			threadFree(workerThread);
 		workerThread = NULL;
 	}
 	if (sdThread) {
-		workerRun = false;
-		LightEvent_Signal(&flEvent);
-		threadJoin(sdThread, U64_MAX);
-		threadFree(sdThread);
+		if (R_SUCCEEDED(threadJoin(sdThread, joinTimeout)))
+			threadFree(sdThread);
 		sdThread = NULL;
 	}
 }

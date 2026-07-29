@@ -50,4 +50,9 @@ void telnetSend(const u8* data, int len);
 // Perf counters: current ring backlog and cumulative received bytes
 void telnetStats(int* ringBytes, u32* totalRxBytes);
 
+// Effective TCP receive buffer the OS actually granted (bytes, 0 if
+// unknown). On a high-latency link throughput is bounded by this / RTT,
+// so it is the number that explains WAN vs LAN throughput gaps.
+int telnetRcvBuf(void);
+
 #endif

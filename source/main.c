@@ -225,6 +225,7 @@ int main(void)
 	u64 lastFrameTime = osGetTime();
 	u32 lastRxTotal = 0, rxRate = 0;
 	u32 lastRateFrame = 0;
+	u64 lastRateTime = osGetTime();
 
 	while (aptMainLoop()) {
 		hidScanInput();
@@ -347,7 +348,13 @@ int main(void)
 				int ringBytes;
 				u32 rxTotal;
 				telnetStats(&ringBytes, &rxTotal);
-				rxRate = rxTotal - lastRxTotal;
+				// True bytes/sec: 60 frames is 1s only at 60fps, and this
+				// number is the whole point of the measurement
+				u64 elapsed = now - lastRateTime;
+				if (elapsed < 1)
+					elapsed = 1;
+				rxRate = (u32)((u64)(rxTotal - lastRxTotal) * 1000 / elapsed);
+				lastRateTime = now;
 				lastRxTotal = rxTotal;
 				lastRateFrame = frame;
 				snprintf(perf, sizeof(perf), "%.1fms r:%dK %luK/s",
@@ -367,12 +374,12 @@ int main(void)
 				char tele[192];
 				snprintf(tele, sizeof(tele),
 				         "f=%.1fms ring=%d rx=%lu/s jobs=%lu(%luK) "
-				         "playing=%03lx drains=%lu conn=%d "
+				         "playing=%03lx drains=%lu conn=%d rcvbuf=%d "
 				         "six=%lu/%lu/%lu/%lu df=%lu %dx%d live=%d clr=%lu",
 				         frameMsAvg, ringBytes, (unsigned long)rxRate,
 				         (unsigned long)jobs, (unsigned long)(jobB / 1024),
 				         (unsigned long)mask, (unsigned long)drains,
-				         conn ? 1 : 0,
+				         conn ? 1 : 0, telnetRcvBuf(),
 				         (unsigned long)sxSeen, (unsigned long)sxSub,
 				         (unsigned long)sxTex, (unsigned long)sxTexFail,
 				         (unsigned long)sxFail, sxW, sxH, sxLive,
@@ -481,5 +488,8 @@ int main(void)
 	C2D_Fini();
 	C3D_Fini();
 	gfxExit();
+	// Hand back the syscore time claimed at startup. Leaving it set is a
+	// known way to hang the return to the Homebrew Launcher.
+	APT_SetAppCpuTimeLimit(0);
 	return 0;
 }

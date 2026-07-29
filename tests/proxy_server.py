@@ -103,8 +103,11 @@ def telemetry_listener(port=2325):
 
 def main():
     ap = argparse.ArgumentParser()
+    # 1513 = Futureland's rlogin port: the client's handshake (and with it
+    # autologin) relays through untouched, so diagnostic sessions don't need
+    # a manual login. Use --bbs-port 23 for a telnet session instead.
     ap.add_argument("--host", default="futureland.today")
-    ap.add_argument("--bbs-port", type=int, default=23)
+    ap.add_argument("--bbs-port", type=int, default=1513)
     ap.add_argument("--port", type=int, default=2324)
     args = ap.parse_args()
 

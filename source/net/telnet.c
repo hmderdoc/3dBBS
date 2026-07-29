@@ -60,6 +60,7 @@ static u8 ring[RING_SIZE];
 static int ringHead, ringTail; // consume at head, produce at tail
 static int ringCount;
 static u32 totalRx;            // cumulative bytes drained (perf overlay)
+static int grantedRcvBuf;      // SO_RCVBUF the OS actually gave us
 
 void telnetSetSize(u16 cols, u16 rows)
 {
@@ -186,8 +187,31 @@ bool telnetConnectAs(const char* host, u16 port, ConnProto proto_,
 
 	// Big receive buffer absorbs audio-blob bursts while frames render;
 	// no Nagle so DSR/query replies go out immediately
-	int rcvbuf = 128 * 1024;
-	setsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof(rcvbuf));
+	// TCP throughput on a high-latency link is (receive window / RTT). The
+	// 3DS default window is 8KB, which caps a ~190ms WAN path at ~43KB/s —
+	// measured, and below what a streamed audio door needs. The stack
+	// REJECTS an oversized SO_RCVBUF rather than clamping it, so walk a
+	// ladder down and keep the largest size it actually honours.
+	static const int wanted[] = { 256*1024, 128*1024, 64*1024, 32*1024, 16*1024 };
+	grantedRcvBuf = 0;
+	for (unsigned i = 0; i < sizeof(wanted)/sizeof(wanted[0]); i++) {
+		if (setsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, &wanted[i],
+		               sizeof(wanted[i])) == 0) {
+			int got = 0;
+			socklen_t rbl = sizeof(got);
+			if (getsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, &got, &rbl) == 0 &&
+			    got > grantedRcvBuf) {
+				grantedRcvBuf = got;
+				if (got >= wanted[i])
+					break;   // honoured in full; stop asking
+			}
+		}
+	}
+	if (grantedRcvBuf == 0) {
+		socklen_t rbl = sizeof(grantedRcvBuf);
+		if (getsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, &grantedRcvBuf, &rbl) < 0)
+			grantedRcvBuf = -1;   // report the default we're stuck with
+	}
 	int nodelay = 1;
 	setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay));
 
@@ -301,6 +325,11 @@ void telnetStats(int* ringBytes, u32* totalRxBytes)
 {
 	*ringBytes = ringCount;
 	*totalRxBytes = totalRx;
+}
+
+int telnetRcvBuf(void)
+{
+	return grantedRcvBuf;
 }
 
 int telnetRead(u8* out, int cap)

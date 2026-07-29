@@ -553,19 +553,13 @@ static void verbUpdate(const char* args)
 		linearFree(n->data);
 		free(n);
 	}
-	if (!ndspChnIsPlaying(ch) && c->head == NULL) {
-		// Channel already drained: fire the one-shot immediately. Arming a
-		// transition-watch here would never fire (JIT streamers block on
-		// this notification — see lameboy notify_drain)
-		char buf[24];
-		snprintf(buf, sizeof(buf), "\x1B[=7;%d;0n", ch);
-		drainNotifies++;
-		LightLock_Unlock(&alock);
-		respond(buf);
-		return;
-	}
+	// Arm ONLY. SyncTerm's do_update() is literally `apc_notify[ch] = true`
+	// and fires solely on a running->stopped transition seen by its poll.
+	// An earlier version here also fired immediately when the channel was
+	// already idle; on a starved stream that idle state is common, so it
+	// emitted spurious drains — and streaming doors re-anchor their
+	// playback clock on each one, which made track position jump backwards.
 	c->armed = true;
-	c->wasPlaying = true;
 	LightLock_Unlock(&alock);
 }
 
