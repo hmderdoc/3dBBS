@@ -128,9 +128,11 @@ protocol v1, text depth layers (protocol 0.3 — terminal text at real stereo
 depths, PROTOCOL.md §7), three-thread architecture (net+render / APC worker /
 SD flush).
 
-Dev-only scaffolding still baked in (strip before any public release): perf
-overlay, UDP telemetry beacon, L-button test probe, `LocalTest`/`FL-Proxy`
-phonebook entries with hardcoded dev-machine IPs.
+Dev builds (`make`) include scaffolding: perf overlay, UDP telemetry
+beacon, L-button test probe, `LocalTest`/`FL-Proxy` phonebook entries with
+hardcoded dev-machine IPs. **`make RELEASE=1` excludes all of it** — the
+release binary contains no telemetry and no dev IPs (verified with
+`strings` on the ELF).
 
 Licensing: vendored Synchronet sources (`vendor/synchronet/`, fonts + CTerm
 spec) are GPL; this project is consequently licensed under the **GNU GPL v2**

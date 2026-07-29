@@ -168,6 +168,13 @@ static void seedShowcase(void)
 
 static void ensureLocalTest(void)
 {
+#ifdef RELEASE_BUILD
+	// Release builds don't create the dev-machine entries — but still run
+	// the migrations for phonebooks written by dev builds.
+	migrateDefaults();
+	markDirty();
+	return;
+#endif
 	bool changed = ensureEntry(LOCALTEST_NAME, LOCALTEST_HOST,
 	                           LOCALTEST_PORT, PROTO_TELNET);
 	// FL-Proxy relays to Futureland's rlogin port, so the client must speak

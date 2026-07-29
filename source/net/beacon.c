@@ -10,6 +10,11 @@ static struct sockaddr_in dest;
 
 void beaconInit(const char* host, int port)
 {
+#ifdef RELEASE_BUILD
+	// Release builds carry no telemetry: fd stays -1, Send/Exit no-op.
+	(void)host; (void)port;
+	return;
+#endif
 	fd = socket(AF_INET, SOCK_DGRAM, 0);
 	if (fd < 0)
 		return;

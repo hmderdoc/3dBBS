@@ -57,6 +57,13 @@ CFLAGS	:=	-g -Wall -O2 -mword-relocations \
 
 CFLAGS	+=	$(INCLUDE) -D__3DS__
 
+# `make RELEASE=1` builds without dev scaffolding: no telemetry beacon,
+# no perf overlay, no L-button sixel probe, no dev-machine phonebook pins.
+ifneq ($(strip $(RELEASE)),)
+CFLAGS	+=	-DRELEASE_BUILD
+endif
+export RELEASE
+
 CXXFLAGS	:= $(CFLAGS) -fno-rtti -fno-exceptions -std=gnu++11
 
 ASFLAGS	:=	-g $(ARCH)

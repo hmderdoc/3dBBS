@@ -213,7 +213,9 @@ int main(void)
 	pbviewInit(promptText, kbdToggle);
 	audioInit(hookRespond); // needs sdmc:/3ds/dspfirm.cdc; silent without it
 	apcInit(hookRespond);
+#ifndef RELEASE_BUILD
 	beaconInit(DEV_MAC_IP, 2325);
+#endif
 
 	static u8 rxbuf[8192];
 	u32 frame = 0;
@@ -245,6 +247,7 @@ int main(void)
 		if (kDown & KEY_SELECT)
 			setMode((mode + 1) % MODE_COUNT);
 
+#ifndef RELEASE_BUILD
 		// DEBUG probe: L injects a magenta square through the sixel image
 		// path at cell (2,2) — isolates draw-path vs image-lifetime bugs
 		if (kDown & KEY_L) {
@@ -255,6 +258,7 @@ int main(void)
 				siximgSubmit(px, 16, 16, 2, 2);
 			}
 		}
+#endif
 
 		const PbEntry* pb = pbGet(pbSelected());
 
@@ -468,8 +472,10 @@ int main(void)
 			siximgDraw(&bv);
 		}
 
+#ifndef RELEASE_BUILD
 		// Perf overlay, bottom-left of the touch screen
 		termgfxDrawText(2, 231, 0.5f, 0xFF00CCCC, perf);
+#endif
 
 		C3D_FrameEnd(0);
 	}
