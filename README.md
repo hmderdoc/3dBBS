@@ -135,8 +135,13 @@ Telnet connections do not autologin — credentials are stored but not sent
 > SyncTERM's `syncterm.lst` does. Anyone with physical access to the card can
 > read them. Leave the password empty for boards where that matters.
 
-SSH is **not** supported: devkitPro ships `3ds-mbedtls` but no libssh2 for
-3DS, so it would require porting libssh2 to ARM11 first.
+**SSH** is supported when the build includes libssh2 (`dkp-pacman -S
+3ds-mbedtls`, then `tools/build_libssh2.sh`; the Makefile switches
+`ENABLE_SSH` on automatically). SSH entries require stored credentials
+(USER button) — the username authenticates the SSH session itself. Host
+keys are accepted without verification in v1: the wire is encrypted, but
+the far end is not authenticated yet (TOFU pinning is a TODO). Builds
+without libssh2 fail SSH dials cleanly.
 
 ## Status / dev notes
 

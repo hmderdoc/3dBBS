@@ -31,10 +31,14 @@ int main(void)
 	CHECK(vert == 1, "seed does not duplicate an existing host");
 	CHECK(cave == 1, "seed adds missing showcase boards");
 
-	// Toggling round-trips protocol and port together
+	// Toggling cycles rlogin -> ssh -> telnet -> rlogin, ports following
+	// only while they sit on the outgoing protocol's default
 	pbToggleProto(0);
 	fl = pbGet(0);
-	CHECK(fl->proto == PROTO_TELNET && fl->port == 23, "rlogin -> telnet:23");
+	CHECK(fl->proto == PROTO_SSH && fl->port == 22, "rlogin -> ssh:22");
+	pbToggleProto(0);
+	fl = pbGet(0);
+	CHECK(fl->proto == PROTO_TELNET && fl->port == 23, "ssh -> telnet:23");
 	pbToggleProto(0);
 	fl = pbGet(0);
 	CHECK(fl->proto == PROTO_RLOGIN && fl->port == 1513,

@@ -19,7 +19,11 @@ void telnetNotifySize(u16 cols, u16 rows);
 //   PROTO_TELNET — RFC 854 NVT with option negotiation (IAC processing)
 //   PROTO_RLOGIN — RFC 1282: byte-transparent after a credential handshake.
 //                  Synchronet uses the handshake for autologin.
-typedef enum { PROTO_TELNET = 0, PROTO_RLOGIN = 1 } ConnProto;
+//   PROTO_SSH    — SSH2 shell channel (libssh2). Requires stored
+//                  credentials; only available in builds with ENABLE_SSH
+//                  (vendor/libssh2 present) — connect fails cleanly
+//                  otherwise.
+typedef enum { PROTO_TELNET = 0, PROTO_RLOGIN = 1, PROTO_SSH = 2 } ConnProto;
 
 // Blocking connect (resolves via getaddrinfo), then switches the socket to
 // non-blocking for pump/send. Returns false on failure.

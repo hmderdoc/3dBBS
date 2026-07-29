@@ -71,7 +71,8 @@ static void rewriteFile(void)
 	for (int i = 0; i < count; i++) {
 		const PbEntry* e = &entries[i];
 		fprintf(f, "%s|%s|%u|%s|%s|%s|%s\n", e->name, e->host, e->port,
-		        e->proto == PROTO_RLOGIN ? "rlogin" : "telnet",
+		        e->proto == PROTO_RLOGIN ? "rlogin" :
+		        e->proto == PROTO_SSH    ? "ssh"    : "telnet",
 		        e->user, e->pass,
 		        (e->flags & PB_FLAG_3D) ? "3d" : "");
 	}
@@ -239,10 +240,16 @@ static void parseLine(char* line)
 	snprintf(e->host, sizeof(e->host), "%s", f[1]);
 
 	int port = (n > 2 && *f[2]) ? atoi(f[2]) : 23;
-	e->proto = (n > 3 && !strcasecmp(f[3], "rlogin")) ? PROTO_RLOGIN
-	                                                  : PROTO_TELNET;
+	e->proto = PROTO_TELNET;
+	if (n > 3) {
+		if (!strcasecmp(f[3], "rlogin"))
+			e->proto = PROTO_RLOGIN;
+		else if (!strcasecmp(f[3], "ssh"))
+			e->proto = PROTO_SSH;
+	}
 	if (port <= 0 || port > 65535)
-		port = e->proto == PROTO_RLOGIN ? 513 : 23;
+		port = e->proto == PROTO_RLOGIN ? 513 :
+		       e->proto == PROTO_SSH    ? 22  : 23;
 	e->port = (u16)port;
 
 	if (n > 4)
@@ -377,19 +384,29 @@ static u16 rloginPortFor(const char* host)
 	return 513;
 }
 
+// Cycle telnet -> rlogin -> ssh -> telnet. The port follows only when it
+// still sits on the previous protocol's default, so custom ports stick.
 void pbToggleProto(int i)
 {
 	if (i < 0 || i >= count)
 		return;
 	PbEntry* e = &entries[i];
-	if (e->proto == PROTO_TELNET) {
+	switch (e->proto) {
+	case PROTO_TELNET:
 		e->proto = PROTO_RLOGIN;
 		if (e->port == 23)
 			e->port = rloginPortFor(e->host);
-	} else {
-		e->proto = PROTO_TELNET;
+		break;
+	case PROTO_RLOGIN:
+		e->proto = PROTO_SSH;
 		if (e->port == 513 || e->port == rloginPortFor(e->host))
+			e->port = 22;
+		break;
+	default:
+		e->proto = PROTO_TELNET;
+		if (e->port == 22)
 			e->port = 23;
+		break;
 	}
 	markDirty();
 }

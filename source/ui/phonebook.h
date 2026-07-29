@@ -7,7 +7,7 @@
 // Dialing directory, persisted at sdmc:/3dBBS/phonebook.txt
 //   name|host|port|proto|user|pass|flags    ('#' starts a comment)
 // Trailing fields are optional: 3 fields = telnet with no credentials.
-// proto is "telnet" or "rlogin". flags is a free-text field; "3d" marks a
+// proto is "telnet", "rlogin", or "ssh". flags is free text; "3d" marks a
 // board known to drive the 3DS: scene protocol (tracked locally — it is a
 // note on our list, not something probed from the wire).
 //
@@ -38,8 +38,8 @@ void pbSelectPrev(void);
 
 // Update credentials for entry i and persist the whole phonebook
 void pbSetCreds(int i, const char* user, const char* pass);
-// Switch entry i between telnet/rlogin (rlogin defaults to port 513 when
-// the entry still has the telnet default) and persist
+// Cycle entry i telnet -> rlogin -> ssh (default ports follow while the
+// entry still sits on the previous protocol's default) and persist
 void pbToggleProto(int i);
 
 // Editing (all persist immediately)

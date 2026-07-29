@@ -8,6 +8,9 @@
 #include <netinet/tcp.h>
 #include <netdb.h>
 #include "telnet.h"
+#ifdef ENABLE_SSH
+#include "ssh.h"
+#endif
 
 // Telnet protocol bytes
 #define T_IAC  255
@@ -97,6 +100,12 @@ static void sendCmd(u8 cmd, u8 opt)
 
 static void sendNaws(void)
 {
+#ifdef ENABLE_SSH
+	if (proto == PROTO_SSH) {
+		sshResize(termCols, termRows);
+		return;
+	}
+#endif
 	if (proto == PROTO_RLOGIN) {
 		// RFC 1282 window-change: magic cookie FF FF 's' 's' then
 		// rows, cols, xpixels, ypixels as network-order u16s
@@ -205,6 +214,20 @@ bool telnetConnectAs(const char* host, u16 port, ConnProto proto_,
 	int nodelay = 1;
 	setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay));
 
+	if (proto == PROTO_SSH) {
+#ifdef ENABLE_SSH
+		// SSH needs a username to authenticate as; without stored creds
+		// the attempt is doomed, so fail fast instead of timing out.
+		if (!user || !*user)
+			goto fail;
+		if (!sshStart(sockfd, user, pass, termCols, termRows))
+			goto fail;
+		nawsOn = true; // window changes ride the SSH channel
+#else
+		goto fail;     // built without SSH support
+#endif
+	}
+
 	if (proto == PROTO_RLOGIN) {
 		// RFC 1282 handshake, SyncTerm field convention (rlogin.c):
 		//   NUL, password NUL, username NUL, "termtype/speed" NUL.
@@ -258,6 +281,10 @@ bool telnetIsConnected(void)
 
 void telnetClose(void)
 {
+#ifdef ENABLE_SSH
+	if (proto == PROTO_SSH)
+		sshClose();
+#endif
 	if (sockfd >= 0) {
 		close(sockfd);
 		sockfd = -1;
@@ -309,18 +336,34 @@ void telnetDrain(void)
 		if (chunk > space)
 			chunk = space;
 
-		int n = recv(sockfd, ring + ringTail, chunk, 0);
-		if (n == 0) {
-			eof = true;
-			telnetClose();
-			return;
-		}
-		if (n < 0) {
-			if (errno != EWOULDBLOCK && errno != EAGAIN) {
+		int n;
+#ifdef ENABLE_SSH
+		if (proto == PROTO_SSH) {
+			// libssh2 owns the socket reads; ring gets decrypted bytes
+			n = sshRecv(ring + ringTail, chunk);
+			if (n < 0) {
 				eof = true;
 				telnetClose();
+				return;
 			}
-			return;
+			if (n == 0)
+				return;
+		} else
+#endif
+		{
+			n = recv(sockfd, ring + ringTail, chunk, 0);
+			if (n == 0) {
+				eof = true;
+				telnetClose();
+				return;
+			}
+			if (n < 0) {
+				if (errno != EWOULDBLOCK && errno != EAGAIN) {
+					eof = true;
+					telnetClose();
+				}
+				return;
+			}
 		}
 		ringTail = (ringTail + n) % RING_SIZE;
 		ringCount += n;
@@ -353,11 +396,12 @@ int telnetRead(u8* out, int cap)
 		ringHead = (ringHead + 1) % RING_SIZE;
 		ringCount--;
 
-		if (proto == PROTO_RLOGIN) {
-			// Byte-transparent: no IAC. The server's initial NUL ack is
-			// swallowed; OOB control bytes ride the urgent channel we
-			// don't subscribe to, so nothing else needs filtering.
-			if (!rloginAcked) {
+		if (proto != PROTO_TELNET) {
+			// rlogin + ssh are byte-transparent: no IAC. rlogin's initial
+			// NUL ack is swallowed; OOB control bytes ride the urgent
+			// channel we don't subscribe to, so nothing else needs
+			// filtering. SSH bytes arrive already decrypted and clean.
+			if (proto == PROTO_RLOGIN && !rloginAcked) {
 				rloginAcked = true;
 				if (c == 0)
 					continue;
@@ -417,6 +461,12 @@ void telnetSend(const u8* data, int len)
 {
 	if (sockfd < 0)
 		return;
+#ifdef ENABLE_SSH
+	if (proto == PROTO_SSH) {
+		sshSend(data, len); // serialized internally
+		return;
+	}
+#endif
 	if (proto == PROTO_RLOGIN) {
 		rawSend(data, len); // transparent: 0xFF is data, not IAC
 		return;

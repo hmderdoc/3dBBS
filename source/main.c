@@ -213,6 +213,9 @@ int main(void)
 	pbviewInit(promptText, kbdToggle);
 	audioInit(hookRespond); // needs sdmc:/3ds/dspfirm.cdc; silent without it
 	apcInit(hookRespond);
+#ifdef ENABLE_SSH
+	sslcInit(0); // mbedtls entropy is wired to sslcGenerateRandomData
+#endif
 #ifndef RELEASE_BUILD
 	beaconInit(DEV_MAC_IP, 2325);
 #endif
@@ -483,6 +486,9 @@ int main(void)
 	telnetClose();
 	pbFlush();   // persist any phonebook edit still buffered
 	apcExit();
+#ifdef ENABLE_SSH
+	sslcExit();
+#endif
 	beaconExit();
 	netExit();
 	audioExit();

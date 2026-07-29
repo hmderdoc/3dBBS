@@ -155,7 +155,8 @@ static void pressButton(int i)
 		pbToggleProto(sel);
 		const PbEntry* e = pbGet(sel);
 		setToast("%s -> %s:%u", e->name,
-		         e->proto == PROTO_RLOGIN ? "rlogin" : "telnet", e->port);
+		         e->proto == PROTO_RLOGIN ? "rlogin" :
+		         e->proto == PROTO_SSH    ? "ssh"    : "telnet", e->port);
 		break;
 	}
 	case 4: addEntry(); break;
@@ -238,11 +239,13 @@ void pbviewRender(const char* status)
 
 		// Right-aligned protocol tag + credential marker
 		snprintf(line, sizeof(line), "%s%s",
-		         e->proto == PROTO_RLOGIN ? "RLGN" : "TLNT",
+		         e->proto == PROTO_RLOGIN ? "RLGN" :
+		         e->proto == PROTO_SSH    ? " SSH" : "TLNT",
 		         e->user[0] ? "*" : " ");
 		float protoX = SCREEN_W - 6 - termgfxTextWidth(0.85f, line);
-		termgfxDrawText(protoX, y + 1,
-		                0.85f, e->proto == PROTO_RLOGIN ? 0xFF66FF66 : 0xFFAAAAAA,
+		termgfxDrawText(protoX, y + 1, 0.85f,
+		                e->proto == PROTO_RLOGIN ? 0xFF66FF66 :
+		                e->proto == PROTO_SSH    ? 0xFFFFCC66 : 0xFFAAAAAA,
 		                line);
 
 		// 3D-capable boards: animated anaglyph border + tag (see KEY below)

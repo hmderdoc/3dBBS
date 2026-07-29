@@ -77,6 +77,14 @@ LIBS	:= -lcitro2d -lcitro3d -lctru -lm
 #---------------------------------------------------------------------------------
 LIBDIRS	:= $(CTRULIB)
 
+# SSH support switches on automatically once vendor/libssh2 exists
+# (build it with tools/build_libssh2.sh; needs the 3ds-mbedtls portlib).
+ifneq ($(wildcard $(TOPDIR)/vendor/libssh2/lib/libssh2.a),)
+CFLAGS	+=	-DENABLE_SSH
+LIBS	:=	-lssh2 -lmbedtls -lmbedx509 -lmbedcrypto $(LIBS)
+LIBDIRS	+=	$(TOPDIR)/vendor/libssh2 $(DEVKITPRO)/portlibs/3ds
+endif
+
 
 #---------------------------------------------------------------------------------
 # no real need to edit anything past this point unless you need to add additional
