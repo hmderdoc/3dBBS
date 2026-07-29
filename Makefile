@@ -33,7 +33,7 @@ include $(DEVKITARM)/3ds_rules
 #---------------------------------------------------------------------------------
 TARGET		:=	3dBBS
 BUILD		:=	build
-SOURCES		:=	source source/gfx source/net source/term source/ui source/proto source/audio
+SOURCES		:=	source source/gfx source/net source/term source/ui source/proto source/audio source/sys
 DATA		:=	data
 INCLUDES	:=	include
 GRAPHICS	:=	gfx

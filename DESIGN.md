@@ -267,6 +267,36 @@ Consequences:
   the socket path. The failure mode (connects fine, no data, WAN-only) is
   invisible in LAN testing by construction.
 
+Since the ceiling is a property of the *path*, not the client, the status
+bar reports the measured receive rate as a modem-style bit rate with a
+per-session peak (`fmtBps` in `source/main.c`). That makes the ceiling
+observable on the device: dial a distant board direct, dial it again
+through `tools/relay.py`, and the two peaks are the 8192/RTT arithmetic
+above without needing a capture. The RGB notification LED
+(`source/sys/led.c`) is the same signal at a glance — a VU meter with
+colour as load (green to red) and a brightness pulse whose rate climbs with
+throughput. Its top of scale is the ~45 KB/s a distant board can actually
+reach, so a WAN session at full tilt reads as maxed rather than middling.
+Hue stays constant within a pattern: the MCU's smoothing interpolates
+between steps, so a hue sweep averages the colour wheel to white.
+
+## 7.6 Terminal geometry
+
+Boards are authored for a screen size, so geometry is per-board state
+(`PbEntry.cols/rows`, 0x0 meaning "the default"), applied before the dial
+so the announcing handshake — telnet NAWS, the rlogin termtype field, or
+the SSH pty request — carries the real numbers. A board's own `CSI t`
+still overrides it for the session.
+
+`PB_MAX_COLS`/`PB_MAX_ROWS` (132x60, the largest grid cterm.adoc
+documents) are load-bearing, not decorative: the renderer emits up to two
+citro2d objects per cell (background quad + glyph) across three views per
+frame (both stereo eyes plus the bottom screen in mirror/tall), and
+`C2D_Init` in `main.c` is sized from exactly that product. citro2d stops
+drawing when its vertex buffer fills and an overflowing GPU command buffer
+svcBreaks outright, so raising the clamp means raising both buffers with
+it. Hand-edited `size` fields are clamped on load rather than trusted.
+
 ## 8. Roadmap
 
 - **Phase 0 — scaffold:** toolchain install, hello-triangle + hello-sockets .3dsx running in Azahar

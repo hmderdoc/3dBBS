@@ -12,14 +12,25 @@ void termgfxExit(void);
 
 u32 termgfxPalette(u8 idx);  // 16-color VGA palette -> RGBA
 
-// A view maps the terminal grid onto (part of) one screen.
+// Cumulative count of terminal draws citro2d refused because its per-frame
+// vertex buffer was full. Anything but zero means C2D_Init is undersized
+// for the current grid: the tail of the frame — the bottom screen — is
+// being dropped, and a run that ends between the background and glyph
+// passes leaves colour blocks with no text.
+u32 termgfxDropped(void);
+
+// A view maps the terminal grid onto (part of) one screen. The axes scale
+// independently: a text mode's character cell is not square (VGA 132x60 is
+// far narrower per column than 80x25), so forcing one scale on both axes
+// would letterbox wide modes into a fraction of the screen rather than
+// showing them the way the mode is meant to look.
 typedef struct {
-	float scale;
+	float sx, sy;
 	float ox, oy;        // pixel offset; oy negative shows a lower grid slice
 	int screenW, screenH;
 } TermView;
 
-// Whole grid scaled to fit and centered (max scale 1.0)
+// Whole grid scaled to fill the screen and centered (neither axis past 1.0)
 void termgfxFitView(const Terminal* t, int screenW, int screenH, TermView* v);
 // Fixed scale, horizontally centered, vertical start at yOffPix screen pixels
 // into the scaled grid (tall mode: top screen 0, bottom screen 240)

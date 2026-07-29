@@ -106,7 +106,7 @@ raises the throughput ceiling.
 
 | Input | Action |
 |---|---|
-| Disconnected | bottom screen is the **phonebook editor**: tap a board to select, tap again to dial; buttons DIAL / EDIT / USER / PROTO / ADD / DEL |
+| Disconnected | bottom screen is the **phonebook editor**: tap a board to select, tap again to dial; buttons DIAL / EDIT / USER / PROTO / SIZE / ADD / DEL |
 | D-pad up/down, A, Y, X (disconnected) | select, dial, set credentials, toggle protocol |
 | Tap status bar (connected) | disconnect |
 | SELECT | display mode: keyboard → mirror → tall |
@@ -119,12 +119,12 @@ raises the throughput ceiling.
 Boards are managed on-device in the phonebook editor (the bottom screen
 while disconnected): **EDIT** changes name/host/port, **ADD** creates an
 entry, **DEL** removes one (tap twice to confirm), **USER** stores
-credentials, **PROTO** switches telnet ↔ rlogin. Everything persists
-immediately to `sdmc:/3dBBS/phonebook.txt`, which can also be edited
-directly:
+credentials, **PROTO** cycles telnet → rlogin → ssh, **SIZE** cycles the
+terminal geometry. Everything persists immediately to
+`sdmc:/3dBBS/phonebook.txt`, which can also be edited directly:
 
 ```
-name|host|port|proto|user|pass|flags    # proto: telnet or rlogin
+name|host|port|proto|user|pass|flags|size   # proto: telnet, rlogin or ssh
 ```
 
 Trailing fields are optional (3 fields = telnet, no credentials). `flags`
@@ -156,6 +156,75 @@ keys are accepted without verification in v1: the wire is encrypted, but
 the far end is not authenticated yet (TOFU pinning is a TODO). Builds
 without libssh2 fail SSH dials cleanly.
 
+## Terminal size
+
+Each board carries its own geometry, because boards disagree: some draw for
+80x25, some assume a taller screen. **SIZE** cycles the SyncTERM screen
+modes — 80x25/28/30/43/50/60 and 132x25/28/30/34/43/50/60 — and wraps back
+to the default. For anything off that list, **EDIT** ends with a
+`COLSxROWS` prompt; clearing it restores the default. The chosen size shows
+in the list next to the board and is written as the `size` column.
+
+The size is applied *before* dialing, so whichever handshake announces it
+(telnet NAWS, the rlogin termtype field, the SSH pty request) carries the
+real geometry. A board that later asks for a different size with CSI t
+still wins — and `CSI 0;0 t` ("restore default") returns to the board's
+configured size rather than a hardcoded 80x25.
+
+132 columns on a 400px screen is about three pixels per glyph. It is
+offered because SyncTERM offers it and boards are authored for it; it is
+readable in **tall** mode (SELECT) and not much else. 132x60 is also the
+ceiling — it's the largest screen CTerm documents, and the renderer's
+vertex and command buffers are sized from exactly that grid.
+
+## Effective speed
+
+While connected, the status bar reports the receive rate as a modem-style
+bit rate with a session peak: `Futureland rlogin*  361.2k bps  pk 402.4k`.
+The peak resets on each dial, so dialing a board direct and then through
+the relay gives two numbers you can put side by side — which is the point,
+given the fixed 8 KB window (DESIGN.md §7.5) makes distance, not
+bandwidth, the limit.
+
+## Settings
+
+Global preferences live in `sdmc:/3dBBS/settings.txt`, written with
+commented defaults on first run:
+
+```
+lid_keepalive_min=5     # keep a live session up this long after lid close
+led=1                   # RGB notification LED tracks the data stream
+```
+
+**Lid keepalive** stops a closed lid from dropping the session. Closing the
+lid normally sleeps the console, which kills the TCP connection mid-BBS;
+with this set the console instead stays awake for the configured window,
+then sleeps normally. It is a real battery cost — the console is running,
+just with dark screens — so it is bounded (max 60 minutes) and `0` turns it
+off entirely. While the lid is shut the app skips drawing altogether and
+only keeps the socket drained.
+
+Refusing sleep is only half of it: the network daemon manager will drop the
+infrastructure connection on its own schedule regardless of sleep state, so
+the app also takes `NDMU_EnterExclusiveState(INFRASTRUCTURE)` and
+`NDMU_LockState()` for its lifetime — the same pairing ftpd uses. A side
+effect is that SpotPass and friends stay suspended while 3dBBS runs, which
+is no loss on a link with an 8 KB window.
+
+**LED** drives the RGB notification LED — the StreetPass/SpotPass one —
+from the data stream, read like a VU meter. Colour is the load: green when
+idle, through yellow-green and amber, to red at the ~45 KB/s ceiling a
+distant board can actually reach. Brightness pulses on top of that, once
+every few seconds when idle and around 2 Hz under load, with peak-meter
+ballistics (fast attack, slow decay) so a single screen paint visibly kicks
+it up the scale. Dark when disconnected.
+
+The MCU animates the 32-step pattern itself, so this costs one I2C write
+per level change rather than anything per frame. Hue is deliberately
+constant within a pattern: sweeping the spectrum across the steps and
+letting the MCU smooth between them averages the colour wheel and comes out
+white. Needs `mcu::HWC`; if that can't be opened the LED is left alone.
+
 ## Status / dev notes
 
 Working: terminal core (truecolor, iCE, DECSTBM, dynamic geometry + NAWS),
@@ -163,7 +232,8 @@ SyncTERM-compatible identification and query surface, APC audio engine with
 JIT streaming, sixel with correct scroll/overwrite lifetime, 3D scene
 protocol v1, text depth layers (protocol 0.3 — terminal text at real stereo
 depths, PROTOCOL.md §7), three-thread architecture (net+render / APC worker /
-SD flush).
+SD flush), telnet/rlogin/SSH, per-board terminal geometry, effective-speed
+readout, lid-close keepalive, RGB LED data indicator.
 
 Dev builds (`make`) include scaffolding: perf overlay, UDP telemetry
 beacon, L-button test probe, `LocalTest`/`FL-Proxy` phonebook entries with

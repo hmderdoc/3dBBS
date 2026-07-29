@@ -210,9 +210,9 @@ void siximgDraw(const TermView* v)
 		sub.top = 1.0f - (float)im->clipTop / im->texPH;
 		sub.bottom = 1.0f - (float)(im->h - im->clipBot) / im->texPH;
 		C2D_Image img = { &im->tex, &sub };
-		float x = v->ox + im->xPix * v->scale;
-		float y = v->oy + (im->yPix + im->clipTop) * v->scale;
-		C2D_DrawImageAt(img, x, y, 0.6f, NULL, v->scale, v->scale);
+		float x = v->ox + im->xPix * v->sx;
+		float y = v->oy + (im->yPix + im->clipTop) * v->sy;
+		C2D_DrawImageAt(img, x, y, 0.6f, NULL, v->sx, v->sy);
 	}
 }
 

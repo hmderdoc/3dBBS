@@ -45,6 +45,47 @@ int main(void)
 	CHECK(fl->proto == PROTO_RLOGIN && fl->port == 1513,
 	      "telnet -> rlogin:1513 (host-specific port)");
 
+	// Terminal size: entries default to 0x0, which resolves to 80x25 so
+	// phonebooks written before the field existed keep working
+	u16 c = 0, r = 0;
+	CHECK(pbGet(0)->cols == 0 && pbGet(0)->rows == 0, "size defaults to unset");
+	pbSizeOf(0, &c, &r);
+	CHECK(c == 80 && r == 25, "unset size resolves to 80x25");
+
+	// The picker offers the SyncTERM screen modes, 80x25 first and 132x60
+	// last; none may exceed the grid the renderer is budgeted for
+	int np = pbSizePresetCount();
+	CHECK(np >= 13, "the full SyncTERM mode list is offered");
+	pbSizePreset(0, &c, &r);
+	CHECK(c == 80 && r == 25, "first preset is 80x25");
+	pbSizePreset(np - 1, &c, &r);
+	CHECK(c == 132 && r == 60, "last preset is 132x60");
+	for (int k = 0; k < np; k++) {
+		pbSizePreset(k, &c, &r);
+		CHECK(c <= PB_MAX_COLS && r <= PB_MAX_ROWS, "preset within budget");
+	}
+
+	// Choosing a preset stores it; choosing the default stores 0x0 rather
+	// than pinning today's numbers
+	pbSizePreset(4, &c, &r);
+	pbSetSize(0, c, r);
+	pbSizeOf(0, &c, &r);
+	CHECK(c == 80 && r == 50, "preset 4 (80x50) applies");
+	pbSetSize(0, 80, 25);
+	CHECK(pbGet(0)->cols == 0 && pbGet(0)->rows == 0,
+	      "choosing the default stores 0x0, not a pinned 80x25");
+
+	// A custom override is kept verbatim; out-of-range is clamped, not
+	// accepted (the renderer's vertex budget is sized from PB_MAX_*)
+	pbSetSize(0, 100, 40);
+	pbSizeOf(0, &c, &r);
+	CHECK(c == 100 && r == 40, "custom size stored verbatim");
+	pbSetSize(0, 400, 400);
+	pbSizeOf(0, &c, &r);
+	CHECK(c == PB_MAX_COLS && r == PB_MAX_ROWS, "oversized request is clamped");
+	pbSetSize(0, 0, 0);
+	CHECK(pbGet(0)->cols == 0, "0x0 restores the default");
+
 	// A generic host uses the standard rlogin port
 	int idx = pbAdd("Generic", "example.org", 23);
 	CHECK(idx > 0, "pbAdd appends");

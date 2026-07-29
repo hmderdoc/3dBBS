@@ -24,6 +24,9 @@
 #include "term/palette.h"
 #include "net/beacon.h"
 #include "gfx/siximg.h"
+#include "sys/settings.h"
+#include "sys/power.h"
+#include "sys/led.h"
 
 #define DEV_MAC_IP "192.168.1.61"  // dev telemetry collector (see tests/)
 
@@ -37,6 +40,11 @@ static bool netOk;
 static int mode = MODE_KBD;
 static int netState = NET_IDLE;
 static bool connectPending;
+
+// Geometry this session is configured for: the dialed board's preference,
+// or whatever the BBS later asked for. MODE_TALL computes its own row count
+// from the screen, so this is what we restore when leaving it.
+static int cfgCols = PB_DEF_COLS, cfgRows = PB_DEF_ROWS;
 
 // --- parser hooks ---
 
@@ -55,7 +63,12 @@ static void applyTallRows(void)
 
 static void hookResize(int cols, int rows)
 {
-	if (cols == 0 || rows == 0) { cols = 80; rows = 25; } // "restore default"
+	// "Restore default" means the board's configured size here, not a
+	// hardcoded 80x25 — otherwise a CSI 0;0 t would silently undo the
+	// per-board preference mid-session.
+	if (cols == 0 || rows == 0) { cols = cfgCols; rows = cfgRows; }
+	cfgCols = cols;
+	cfgRows = rows;
 	termResize(&term, cols, rows);
 	if (mode == MODE_TALL)
 		applyTallRows();
@@ -166,6 +179,21 @@ static void sendMouseClick(int col, int row)
 	}
 }
 
+// Receive throughput as a modem-style bit rate. Bytes/sec is what we
+// measure; bps is what a BBS user has a feel for, and it is the number that
+// makes the relay-vs-direct difference (DESIGN.md §7.5) legible without a
+// packet capture.
+static void fmtBps(u32 bytesPerSec, char* out, size_t cap)
+{
+	unsigned long bps = (unsigned long)bytesPerSec * 8;
+	if (bps < 10000)
+		snprintf(out, cap, "%lu", bps);
+	else if (bps < 1000000)
+		snprintf(out, cap, "%.1fk", bps / 1000.0);
+	else
+		snprintf(out, cap, "%.2fM", bps / 1000000.0);
+}
+
 static void setMode(int m)
 {
 	if (m == mode)
@@ -176,7 +204,7 @@ static void setMode(int m)
 		applyTallRows();
 		telnetNotifySize(term.cols, term.rows);
 	} else if (wasTall) {
-		termResize(&term, term.cols, 25);
+		termResize(&term, cfgCols, cfgRows);
 		telnetNotifySize(term.cols, term.rows);
 	}
 }
@@ -186,8 +214,32 @@ int main(void)
 	gfxInitDefault();
 	gfxSet3D(true);
 	APT_SetAppCpuTimeLimit(30); // free core-1 time for the APC worker thread
-	C3D_Init(C3D_DEFAULT_CMDBUF_SIZE * 2);
-	C2D_Init(32768); // worst case: 80x60 grid fully colored, both screens
+	// Two independent per-frame limits sit behind these numbers, and only
+	// one of them is measurable. citro2d silently stops drawing once its
+	// vertex buffer is full (counted — see termgfxDropped), while the GPU
+	// command buffer svcBreaks on overflow with no counter at all. A dense
+	// screen at 132 columns pushes both.
+	//
+	// Running out of either has ugly, non-obvious consequences: the bottom
+	// screen is drawn last, so it is never cleared (stale garbage, no
+	// keyboard), and drawCells emits all backgrounds before any glyphs, so
+	// running dry between those passes leaves solid colour blocks with no
+	// text over the 3D scene.
+	//
+	// The answer is not a bigger buffer. What actually collapses a dense
+	// screen is merging background runs in the renderer, which cuts BOTH
+	// limits by the same large factor — a full-screen colour field becomes
+	// a few quads per row instead of one per cell. With that in place the
+	// budget stays at a size known to allocate, leaving the linear heap
+	// (measured: ~25MB free) to the sixel textures and mesh cache rather
+	// than spending ~6.3MB of it on vertices for a worst case the renderer
+	// no longer generates.
+	C3D_Init(C3D_DEFAULT_CMDBUF_SIZE * 4);
+	size_t c2dObjects = 32768;
+	if (!C2D_Init(c2dObjects)) {
+		c2dObjects = 16384;
+		C2D_Init(c2dObjects);
+	}
 	C2D_Prepare();
 
 	C3D_RenderTarget* topL = C2D_CreateScreenTarget(GFX_TOP, GFX_LEFT);
@@ -207,6 +259,10 @@ int main(void)
 	ansiInit(&parser, &term, &hooks);
 
 	netOk = netInit();
+	settingsLoad();
+	powerInit();
+	if (settingsGet()->led)
+		ledInit();
 	pbLoad();
 	telnetSetSize(term.cols, term.rows);
 	kbdInit(kbdSend, kbdToggle);
@@ -225,10 +281,10 @@ int main(void)
 	char status[96];
 
 	// Perf overlay state
-	char perf[48] = "";
+	char perf[96] = "";
 	float frameMsAvg = 16.7f;
 	u64 lastFrameTime = osGetTime();
-	u32 lastRxTotal = 0, rxRate = 0;
+	u32 lastRxTotal = 0, rxRate = 0, peakRate = 0, lastFrameRx = 0;
 	u32 lastRateFrame = 0;
 	u64 lastRateTime = osGetTime();
 
@@ -267,6 +323,20 @@ int main(void)
 
 		if (connectPending) {
 			connectPending = false;
+			rxRate = peakRate = 0;   // per-session, or the peak lies
+			// Adopt the board's geometry before dialing, so the size the
+			// handshake announces (rlogin termtype / SSH pty / telnet
+			// NAWS) is the one we actually have.
+			{
+				u16 c, r;
+				pbSizeOf(pbSelected(), &c, &r);
+				cfgCols = c;
+				cfgRows = r;
+				termResize(&term, c, r);
+				if (mode == MODE_TALL)
+					applyTallRows();
+				telnetSetSize(term.cols, term.rows);
+			}
 			termReset(&term);
 			if (telnetConnectAs(pb->host, pb->port, pb->proto,
 			                    pb->user, pb->pass)) {
@@ -337,14 +407,41 @@ int main(void)
 			"tap to connect", "connecting...", "online",
 			"connect FAILED", "connection closed"
 		};
-		snprintf(status, sizeof(status), "%s %s:%u %s%s - %s",
-		         pb->name, pb->host, pb->port,
-		         pb->proto == PROTO_RLOGIN ? "rlogin" : "telnet",
-		         pb->user[0] ? "*" : "",   // '*' = credentials stored
-		         netOk ? stateNames[netState] : "network init FAILED");
+		const char* protoName = pb->proto == PROTO_RLOGIN ? "rlogin" :
+		                        pb->proto == PROTO_SSH    ? "ssh"    : "telnet";
+		if (conn) {
+			// Online, the line rate is the interesting number and the
+			// host:port is not — you already know where you are. Peak is
+			// held because a burst that ends before you look up is still
+			// the honest answer to "how fast is this link".
+			char now[16], pk[16];
+			fmtBps(rxRate, now, sizeof(now));
+			fmtBps(peakRate, pk, sizeof(pk));
+			snprintf(status, sizeof(status), "%s %s%s  %s bps  pk %s",
+			         pb->name, protoName, pb->user[0] ? "*" : "", now, pk);
+		} else {
+			snprintf(status, sizeof(status), "%s %s:%u %s%s - %s",
+			         pb->name, pb->host, pb->port, protoName,
+			         pb->user[0] ? "*" : "",   // '*' = credentials stored
+			         netOk ? stateNames[netState] : "network init FAILED");
+		}
 
 		audioPoll();
 		siximgPoll();
+		{
+			// Per-frame byte delta: the LED lamp needs the bursts, not the
+			// once-a-second average, which is zero on an idle session.
+			int ringNow;
+			u32 rxNow;
+			telnetStats(&ringNow, &rxNow);
+			ledUpdate(conn, rxNow - lastFrameRx);
+			lastFrameRx = rxNow;
+		}
+		// Lid shut with the session held open: nothing on either screen is
+		// visible, so skip the frame's drawing entirely and let the loop
+		// keep draining the socket. C3D_FrameBegin/End is what paces us,
+		// so it still runs — only the work inside it is skipped.
+		bool lidHeld = powerUpdate(conn, settingsGet()->lidKeepaliveMin);
 
 		// Perf overlay: frame-time EMA, ring backlog, ingest rate
 		{
@@ -361,12 +458,30 @@ int main(void)
 				if (elapsed < 1)
 					elapsed = 1;
 				rxRate = (u32)((u64)(rxTotal - lastRxTotal) * 1000 / elapsed);
+				if (rxRate > peakRate)
+					peakRate = rxRate;
 				lastRateTime = now;
 				lastRxTotal = rxTotal;
 				lastRateFrame = frame;
-				snprintf(perf, sizeof(perf), "%.1fms r:%dK %luK/s",
+				// ptm/slp/lid/led say whether the sleep and LED features
+				// actually have their services. Both fail silently and
+				// look exactly like "the feature is off" from outside,
+				// and service access differs between the Homebrew
+				// Launcher and the .cia — so they get reported, not
+				// assumed.
+				PowerStatus ps;
+				powerStatus(&ps);
+				snprintf(perf, sizeof(perf),
+				         "%.1fms r:%dK %luK/s drop%lu %dx%d/%luk ptm%d ndm%d "
+				         "slp%d lid%d led%d shut%lus/%luf",
 				         frameMsAvg, ringBytes / 1024,
-				         (unsigned long)(rxRate / 1024));
+				         (unsigned long)(rxRate / 1024),
+				         (unsigned long)termgfxDropped(),
+				         term.cols, term.rows,
+				         (unsigned long)(c2dObjects / 1000),
+				         ps.ptmOk, ps.ndmOk, ps.sleepBlocked, ps.lidShut,
+				         ledOk(), (unsigned long)(ps.lastShutMs / 1000),
+				         (unsigned long)ps.lastShutFrames);
 
 				// Same stats + internals, phoned home so nobody has to
 				// squint at the overlay
@@ -378,11 +493,12 @@ int main(void)
 				apcDebugStats(&jobs, &jobB);
 				apcSixelStats(&sxSeen, &sxFail);
 				siximgDebugStats(&sxSub, &sxTex, &sxTexFail, &sxW, &sxH);
-				char tele[192];
+				char tele[288];
 				snprintf(tele, sizeof(tele),
 				         "f=%.1fms ring=%d rx=%lu/s jobs=%lu(%luK) "
 				         "playing=%03lx drains=%lu conn=%d rcvbuf=%d hs=%d "
-				         "six=%lu/%lu/%lu/%lu df=%lu %dx%d live=%d clr=%lu",
+				         "six=%lu/%lu/%lu/%lu df=%lu %dx%d live=%d clr=%lu "
+				         "drop=%lu c2d=%lu grid=%dx%d lin=%luK vram=%luK",
 				         frameMsAvg, ringBytes, (unsigned long)rxRate,
 				         (unsigned long)jobs, (unsigned long)(jobB / 1024),
 				         (unsigned long)mask, (unsigned long)drains,
@@ -390,7 +506,11 @@ int main(void)
 				         (unsigned long)sxSeen, (unsigned long)sxSub,
 				         (unsigned long)sxTex, (unsigned long)sxTexFail,
 				         (unsigned long)sxFail, sxW, sxH, sxLive,
-				         (unsigned long)sxClr);
+				         (unsigned long)sxClr,
+				         (unsigned long)termgfxDropped(),
+				         (unsigned long)c2dObjects, term.cols, term.rows,
+				         (unsigned long)(linearSpaceFree() / 1024),
+				         (unsigned long)(vramSpaceFree() / 1024));
 				beaconSend(tele);
 			}
 		}
@@ -402,6 +522,18 @@ int main(void)
 		frame++;
 
 		C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
+
+		if (lidHeld) {
+			// Behind a closed lid there is nothing to see, so skip walking
+			// the grid — but still clear and bind a target, so the frame
+			// has the same shape C3D_FrameEnd sees on every other pass.
+			// The loop keeps draining the socket on the way round.
+			C2D_TargetClear(topL, 0xFF000000);
+			C2D_TargetClear(bottom, 0xFF000000);
+			C2D_SceneBegin(bottom);
+			C3D_FrameEnd(0);
+			continue;
+		}
 
 		// Top screen
 		bool termOnTop = conn || netState == NET_CLOSED;
@@ -485,6 +617,8 @@ int main(void)
 
 	telnetClose();
 	pbFlush();   // persist any phonebook edit still buffered
+	ledExit();
+	powerExit();
 	apcExit();
 #ifdef ENABLE_SSH
 	sslcExit();

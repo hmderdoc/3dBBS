@@ -12,8 +12,9 @@
 // boards that drive the 3DS: scene protocol.
 static const char* defaultFile =
 	"# 3dBBS dialing directory  (v2)\n"
-	"# name|host|port|proto|user|pass|flags   (proto: telnet or rlogin)\n"
+	"# name|host|port|proto|user|pass|flags|size  (proto: telnet/rlogin/ssh)\n"
 	"# flags: 3d = board drives 3dBBS stereoscopic scenes\n"
+	"# size: COLSxROWS requested for this board; empty = 80x25\n"
 	"# Credentials are stored in PLAIN TEXT - anyone with this SD card can\n"
 	"# read them. Leave the password empty where that matters.\n"
 	"# rlogin passes user/pass in its handshake (Synchronet autologin).\n"
@@ -66,15 +67,19 @@ static void rewriteFile(void)
 	if (!f)
 		return;
 	fputs("# 3dBBS dialing directory  (v2)\n"
-	      "# name|host|port|proto|user|pass|flags   (flags: 3d = 3D scenes)\n"
+	      "# name|host|port|proto|user|pass|flags|size\n"
+	      "# flags: 3d = 3D scenes.  size: COLSxROWS, empty = 80x25\n"
 	      "# Credentials are stored in PLAIN TEXT on this card.\n", f);
 	for (int i = 0; i < count; i++) {
 		const PbEntry* e = &entries[i];
-		fprintf(f, "%s|%s|%u|%s|%s|%s|%s\n", e->name, e->host, e->port,
+		char size[12] = "";
+		if (e->cols && e->rows)
+			snprintf(size, sizeof(size), "%ux%u", e->cols, e->rows);
+		fprintf(f, "%s|%s|%u|%s|%s|%s|%s|%s\n", e->name, e->host, e->port,
 		        e->proto == PROTO_RLOGIN ? "rlogin" :
 		        e->proto == PROTO_SSH    ? "ssh"    : "telnet",
 		        e->user, e->pass,
-		        (e->flags & PB_FLAG_3D) ? "3d" : "");
+		        (e->flags & PB_FLAG_3D) ? "3d" : "", size);
 	}
 	fclose(f);
 }
@@ -224,13 +229,33 @@ static int splitFields(char* line, char** fields, int maxFields)
 	return n;
 }
 
+// Clamp a requested geometry into the supported range. 0x0 in means "the
+// default", and stays 0x0 so the entry keeps tracking the default rather
+// than freezing today's value.
+static void pbClampSize(const unsigned* inC, const unsigned* inR,
+                        u16* outC, u16* outR)
+{
+	unsigned c = *inC, r = *inR;
+	if (!c || !r) {
+		*outC = 0;
+		*outR = 0;
+		return;
+	}
+	if (c < PB_MIN_COLS) c = PB_MIN_COLS;
+	if (c > PB_MAX_COLS) c = PB_MAX_COLS;
+	if (r < PB_MIN_ROWS) r = PB_MIN_ROWS;
+	if (r > PB_MAX_ROWS) r = PB_MAX_ROWS;
+	*outC = (u16)c;
+	*outR = (u16)r;
+}
+
 static void parseLine(char* line)
 {
 	if (count >= PB_MAX || line[0] == '#' || !strchr(line, '|'))
 		return;
 
-	char* f[7] = { NULL };
-	int n = splitFields(line, f, 7);
+	char* f[8] = { NULL };
+	int n = splitFields(line, f, 8);
 	if (n < 2 || !*f[0] || !*f[1])
 		return;
 
@@ -258,6 +283,11 @@ static void parseLine(char* line)
 		snprintf(e->pass, sizeof(e->pass), "%s", f[5]);
 	if (n > 6 && hostHas(f[6], "3d"))
 		e->flags |= PB_FLAG_3D;
+	if (n > 7 && *f[7]) {
+		unsigned c = 0, r = 0;
+		if (sscanf(f[7], "%ux%u", &c, &r) == 2)
+			pbClampSize(&c, &r, &e->cols, &e->rows);
+	}
 	count++;
 }
 
@@ -373,6 +403,50 @@ void pbSelect(int i)
 {
 	if (i >= 0 && i < count)
 		selected = i;
+}
+
+// SyncTERM's screen modes (syncterm.net), which is what BBS authors design
+// their screens against. 132x60 is also the largest grid CTerm documents,
+// so the list needs no ceiling of its own. Index 0 is the default; PROTO
+// and SIZE both cycle, so the entry's own value is found in the list first
+// and a custom size simply steps to the following preset.
+static const struct { u16 c, r; } sizePresets[] = {
+	{  80, 25 }, {  80, 28 }, {  80, 30 }, {  80, 43 }, {  80, 50 },
+	{  80, 60 },
+	{ 132, 25 }, { 132, 28 }, { 132, 30 }, { 132, 34 }, { 132, 43 },
+	{ 132, 50 }, { 132, 60 },
+};
+#define NSIZES (int)(sizeof(sizePresets) / sizeof(sizePresets[0]))
+
+void pbSizeOf(int i, u16* cols, u16* rows)
+{
+	const PbEntry* e = pbGet(i);
+	*cols = e->cols ? e->cols : PB_DEF_COLS;
+	*rows = e->rows ? e->rows : PB_DEF_ROWS;
+}
+
+void pbSetSize(int i, u16 cols, u16 rows)
+{
+	if (i < 0 || i >= count)
+		return;
+	// Asking for the default stores 0x0 rather than pinning today's
+	// numbers, so the entry keeps tracking the default and the file stays
+	// free of redundant columns.
+	if (cols == PB_DEF_COLS && rows == PB_DEF_ROWS)
+		cols = rows = 0;
+	unsigned c = cols, r = rows;
+	pbClampSize(&c, &r, &entries[i].cols, &entries[i].rows);
+	markDirty();
+}
+
+int pbSizePresetCount(void) { return NSIZES; }
+
+void pbSizePreset(int k, u16* cols, u16* rows)
+{
+	if (k < 0 || k >= NSIZES)
+		k = 0;
+	*cols = sizePresets[k].c;
+	*rows = sizePresets[k].r;
 }
 
 // Some boards don't run rlogin on the standard port; keep a small table of

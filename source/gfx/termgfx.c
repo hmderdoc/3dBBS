@@ -10,9 +10,18 @@
 #define SCREEN_W 400.0f
 #define SCREEN_H 240.0f
 
+// citro2d silently drops draws once its per-frame vertex buffer is full,
+// which corrupts whatever is drawn last (the bottom screen) and, because
+// backgrounds and glyphs are separate passes, can leave colour blocks with
+// no text. Counting the failures turns that from a baffling visual glitch
+// into a number on the overlay.
+static u32 dropped;
+
 static C2D_SpriteSheet sheet;
 static C3D_Tex* fontTex;
 static Tex3DS_SubTexture glyphSub[256];
+
+u32 termgfxDropped(void) { return dropped; }
 
 u32 termgfxPalette(u8 idx)
 {
@@ -75,13 +84,17 @@ void termgfxFitView(const Terminal* t, int screenW, int screenH, TermView* v)
 {
 	float gridW = t->cols * GLYPH_W;
 	float gridH = t->rows * GLYPH_H;
+	// Each axis fills independently. Clamping to 1.0 keeps small grids from
+	// being blown up past the font atlas's native size; anything larger
+	// than the screen (every 132-column mode) uses the whole width.
 	float sx = screenW / gridW;
 	float sy = screenH / gridH;
-	float s = sx < sy ? sx : sy;
-	if (s > 1.0f) s = 1.0f;
-	v->scale = s;
-	v->ox = (screenW - gridW * s) / 2.0f;
-	v->oy = (screenH - gridH * s) / 2.0f;
+	if (sx > 1.0f) sx = 1.0f;
+	if (sy > 1.0f) sy = 1.0f;
+	v->sx = sx;
+	v->sy = sy;
+	v->ox = (screenW - gridW * sx) / 2.0f;
+	v->oy = (screenH - gridH * sy) / 2.0f;
 	v->screenW = screenW;
 	v->screenH = screenH;
 }
@@ -90,7 +103,7 @@ void termgfxSpanView(const Terminal* t, int screenW, int screenH, float scale,
                      float yOffPix, TermView* v)
 {
 	float gridW = t->cols * GLYPH_W;
-	v->scale = scale;
+	v->sx = v->sy = scale;   // span mode is width-fit, so cells stay square
 	v->ox = (screenW - gridW * scale) / 2.0f;
 	v->oy = -yOffPix;
 	v->screenW = screenW;
@@ -100,7 +113,7 @@ void termgfxSpanView(const Terminal* t, int screenW, int screenH, float scale,
 bool termgfxCellAt(const Terminal* t, const TermView* v, int px, int py,
                    int* col, int* row)
 {
-	float cw = GLYPH_W * v->scale, chh = GLYPH_H * v->scale;
+	float cw = GLYPH_W * v->sx, chh = GLYPH_H * v->sy;
 	int x = (int)((px - v->ox) / cw);
 	int y = (int)((py - v->oy) / chh);
 	if (px < v->ox || x < 0 || x >= t->cols || y < 0 || y >= t->rows)
@@ -117,20 +130,34 @@ bool termgfxCellAt(const Terminal* t, const TermView* v, int px, int py,
 static void drawCells(const Terminal* t, const TermView* v, int y0, int y1,
                       bool blinkPhase, int layerMask, float xShift, float z)
 {
-	float cw = GLYPH_W * v->scale, chh = GLYPH_H * v->scale;
+	float cw = GLYPH_W * v->sx, chh = GLYPH_H * v->sy;
 
 	// Two passes: all solid rects, then all textured glyphs. Interleaving
 	// them costs a GPU pipeline-state switch per cell, which overflows the
 	// command buffer on dense screens (libctru svcBreaks in GPUCMD_Add).
+	// Backgrounds go out as merged horizontal runs, not one quad per cell.
+	// A cell-at-a-time pass makes a full-screen colour field the single
+	// largest consumer of the frame's vertex budget — thousands of quads
+	// for what is really a handful of bands — and dense screens are
+	// exactly where running out does visible damage.
 	for (int y = y0; y < y1; y++) {
 		const TermCell* row = &t->cells[y * t->cols];
 		float py = v->oy + y * chh;
-		for (int x = 0; x < t->cols; x++) {
-			if (layerMask >= 0 && row[x].layer != layerMask)
+		int x = 0;
+		while (x < t->cols) {
+			bool inLayer = (layerMask < 0 || row[x].layer == layerMask);
+			if (!inLayer || row[x].bg == OPAQUE_BLACK) {
+				x++;
 				continue;
-			if (row[x].bg != OPAQUE_BLACK)
-				C2D_DrawRectSolid(v->ox + xShift + x * cw, py, z,
-				                  cw, chh, row[x].bg);
+			}
+			u32 bg = row[x].bg;
+			int start = x;
+			while (x < t->cols && row[x].bg == bg &&
+			       (layerMask < 0 || row[x].layer == layerMask))
+				x++;
+			if (!C2D_DrawRectSolid(v->ox + xShift + start * cw, py, z,
+			                       (x - start) * cw, chh, bg))
+				dropped++;
 		}
 	}
 
@@ -149,8 +176,9 @@ static void drawCells(const Terminal* t, const TermView* v, int y0, int y1,
 				continue;
 			C2D_Image img = { fontTex, &glyphSub[ch] };
 			C2D_PlainImageTint(&tint, c->fg, 1.0f);
-			C2D_DrawImageAt(img, v->ox + xShift + x * cw, py,
-			                z + 0.02f, &tint, v->scale, v->scale);
+			if (!C2D_DrawImageAt(img, v->ox + xShift + x * cw, py,
+			                     z + 0.02f, &tint, v->sx, v->sy))
+				dropped++;
 		}
 	}
 }
@@ -158,7 +186,7 @@ static void drawCells(const Terminal* t, const TermView* v, int y0, int y1,
 void termgfxRenderTermView(const Terminal* t, u32 frame, const TermView* v,
                            const float* layerShiftPx)
 {
-	float cw = GLYPH_W * v->scale, chh = GLYPH_H * v->scale;
+	float cw = GLYPH_W * v->sx, chh = GLYPH_H * v->sy;
 	bool blinkPhase = (frame / 32) & 1;
 
 	// Cull rows outside this view's screen
