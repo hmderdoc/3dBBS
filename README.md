@@ -12,6 +12,19 @@ that it adds an `APC 3DS:` escape-sequence namespace: a BBS can upload meshes
 rendered with real stereo depth on the top screen, composited under the
 terminal text.
 
+## Install (QR)
+
+Scan with **FBI → Remote Install → Scan QR Code** to install the latest
+release over the air (CFW required):
+
+![Install 3dBBS](assets/qr-install.png)
+
+The QR points at
+`https://github.com/hmderdoc/3dBBS/releases/latest/download/3dBBS.cia`,
+which always resolves to the newest release — it never needs regenerating.
+(Note: works once the repository is public; private release assets require
+authentication that FBI can't provide.)
+
 ## Documentation
 
 - **[docs/PROTOCOL.md](docs/PROTOCOL.md)** — the complete wire-protocol
