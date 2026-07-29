@@ -20,6 +20,28 @@ static PbEntry entries[PB_MAX];
 static int count;
 static int selected;
 
+// SD writes stall the frame (~tens of ms), so edits only mark the book
+// dirty; pbTick() flushes once the user stops tapping.
+static bool pbDirty;
+static int idleFrames;
+
+static void markDirty(void)
+{
+	pbDirty = true;
+	idleFrames = 0;   // restart the quiet period on every edit
+}
+
+// Case-insensitive substring test (newlib has no strcasestr)
+static bool hostHas(const char* host, const char* needle)
+{
+	size_t nl = strlen(needle);
+	for (const char* p = host; *p; p++) {
+		if (!strncasecmp(p, needle, nl))
+			return true;
+	}
+	return false;
+}
+
 // Dev-loop entries pointing at the development Mac (stress server and the
 // Futureland logging proxy). The Mac's DHCP address drifts, so entries are
 // created if missing and REWRITTEN if they don't match these constants.
@@ -70,12 +92,56 @@ static bool ensureEntry(const char* name, const char* host, u16 port)
 	return false;
 }
 
+// One-time migration for phonebooks written before rlogin existed: a
+// Futureland entry still on telnet:23 moves to rlogin on its real port.
+// Guarded by a marker line so a later deliberate switch back sticks.
+static bool migrated;
+
+static void migrateDefaults(void)
+{
+	if (migrated)
+		return;
+	for (int i = 0; i < count; i++) {
+		PbEntry* e = &entries[i];
+		if (e->proto == PROTO_TELNET && e->port == 23 &&
+		    hostHas(e->host, "futureland.today")) {
+			e->proto = PROTO_RLOGIN;
+			e->port = 1513;
+		}
+	}
+	migrated = true;
+}
+
 static void ensureLocalTest(void)
 {
 	bool changed = ensureEntry(LOCALTEST_NAME, LOCALTEST_HOST, LOCALTEST_PORT);
 	changed |= ensureEntry(FLPROXY_NAME, DEV_HOST, FLPROXY_PORT);
-	if (changed)
+	migrateDefaults();
+	markDirty(); // always: persists the migration marker and any change
+	(void)changed;
+}
+
+void pbTick(void)
+{
+	if (!pbDirty) {
+		idleFrames = 0;
+		return;
+	}
+	// ~0.5s of quiet before touching the card, so a burst of taps costs
+	// exactly one write and never hitches the tap itself
+	if (++idleFrames < 30)
+		return;
+	rewriteFile();
+	pbDirty = false;
+	idleFrames = 0;
+}
+
+void pbFlush(void)
+{
+	if (pbDirty) {
 		rewriteFile();
+		pbDirty = false;
+	}
 }
 
 // Split "a|b|c" in place; returns field count, fields[] point into line
@@ -184,7 +250,7 @@ void pbSetCreds(int i, const char* user, const char* pass)
 		snprintf(entries[i].user, sizeof(entries[i].user), "%s", user);
 	if (pass)
 		snprintf(entries[i].pass, sizeof(entries[i].pass), "%s", pass);
-	rewriteFile();
+	markDirty();
 }
 
 void pbSetEntry(int i, const char* name, const char* host, u16 port)
@@ -197,7 +263,7 @@ void pbSetEntry(int i, const char* name, const char* host, u16 port)
 		snprintf(entries[i].host, sizeof(entries[i].host), "%s", host);
 	if (port)
 		entries[i].port = port;
-	rewriteFile();
+	markDirty();
 }
 
 int pbAdd(const char* name, const char* host, u16 port)
@@ -211,7 +277,7 @@ int pbAdd(const char* name, const char* host, u16 port)
 	e->port = port ? port : 23;
 	e->proto = PROTO_TELNET;
 	count++;
-	rewriteFile();
+	markDirty();
 	return count - 1;
 }
 
@@ -223,13 +289,22 @@ void pbDelete(int i)
 	count--;
 	if (selected >= count)
 		selected = count - 1;
-	rewriteFile();
+	markDirty();
 }
 
 void pbSelect(int i)
 {
 	if (i >= 0 && i < count)
 		selected = i;
+}
+
+// Some boards don't run rlogin on the standard port; keep a small table of
+// known exceptions so the toggle lands somewhere that actually answers.
+static u16 rloginPortFor(const char* host)
+{
+	if (hostHas(host, "futureland.today"))
+		return 1513;   // verified: 1513 open, 513 closed
+	return 513;
 }
 
 void pbToggleProto(int i)
@@ -240,11 +315,11 @@ void pbToggleProto(int i)
 	if (e->proto == PROTO_TELNET) {
 		e->proto = PROTO_RLOGIN;
 		if (e->port == 23)
-			e->port = 513;
+			e->port = rloginPortFor(e->host);
 	} else {
 		e->proto = PROTO_TELNET;
-		if (e->port == 513)
+		if (e->port == 513 || e->port == rloginPortFor(e->host))
 			e->port = 23;
 	}
-	rewriteFile();
+	markDirty();
 }

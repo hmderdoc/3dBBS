@@ -43,4 +43,9 @@ int pbAdd(const char* name, const char* host, u16 port);  // -> index or -1
 void pbDelete(int i);      // refuses to delete the last remaining entry
 void pbSelect(int i);
 
+// Edits are buffered: pbTick() (call once per frame) writes the file after
+// a short quiet period, so taps never stall on SD I/O. pbFlush() forces it.
+void pbTick(void);
+void pbFlush(void);
+
 #endif

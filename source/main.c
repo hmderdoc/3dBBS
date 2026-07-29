@@ -468,6 +468,7 @@ int main(void)
 	}
 
 	telnetClose();
+	pbFlush();   // persist any phonebook edit still buffered
 	apcExit();
 	beaconExit();
 	netExit();

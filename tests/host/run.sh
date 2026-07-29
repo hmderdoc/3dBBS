@@ -9,3 +9,8 @@ cc -Wall -O1 -I . -o /tmp/3dbbs_test_ansi \
 	../../source/term/palette.c \
 	../../source/gfx/sixel.c
 /tmp/3dbbs_test_ansi
+
+cc -Wall -O1 -I . -o /tmp/3dbbs_test_pb \
+	test_phonebook.c \
+	../../source/ui/phonebook.c
+/tmp/3dbbs_test_pb

@@ -1,3 +1,4 @@
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -17,6 +18,19 @@ static PbPromptFn promptFn;
 static PbConnectFn connectFn;
 static int scroll;
 static int confirmDel;   // frames left on the "Sure?" delete confirmation
+static int pressedBtn = -1;
+static int pressedFrames;
+static char toast[64];   // "what just changed" line
+static int toastFrames;
+
+static void setToast(const char* fmt, ...)
+{
+	va_list ap;
+	va_start(ap, fmt);
+	vsnprintf(toast, sizeof(toast), fmt, ap);
+	va_end(ap);
+	toastFrames = 150;   // ~2.5s
+}
 
 typedef struct {
 	const char* label;
@@ -98,12 +112,28 @@ static void pressButton(int i)
 	int sel = pbSelected();
 	if (i != NBTN - 1)
 		confirmDel = 0;   // any other action cancels a pending delete
+	pressedBtn = i;
+	pressedFrames = 10;
 
 	switch (i) {
 	case 0: if (connectFn) connectFn(); break;
-	case 1: editEntry(sel); break;
-	case 2: editCreds(sel); break;
-	case 3: pbToggleProto(sel); break;
+	case 1:
+		editEntry(sel);
+		setToast("%s %s:%u", pbGet(sel)->name, pbGet(sel)->host,
+		         pbGet(sel)->port);
+		break;
+	case 2:
+		editCreds(sel);
+		setToast(pbGet(sel)->user[0] ? "login saved for %s" : "no login for %s",
+		         pbGet(sel)->name);
+		break;
+	case 3: {
+		pbToggleProto(sel);
+		const PbEntry* e = pbGet(sel);
+		setToast("%s -> %s:%u", e->name,
+		         e->proto == PROTO_RLOGIN ? "rlogin" : "telnet", e->port);
+		break;
+	}
 	case 4: addEntry(); break;
 	case 5:
 		if (confirmDel > 0) {
@@ -122,12 +152,17 @@ void pbviewUpdate(u32 kDown, u32 kHeld, touchPosition touch)
 	(void)kHeld;
 	if (confirmDel > 0)
 		confirmDel--;
+	if (pressedFrames > 0 && --pressedFrames == 0)
+		pressedBtn = -1;
+	if (toastFrames > 0)
+		toastFrames--;
+	pbTick();   // deferred SD write, once the tapping stops
 
 	if (kDown & KEY_DUP)   { pbSelectPrev(); ensureVisible(); confirmDel = 0; }
 	if (kDown & KEY_DDOWN) { pbSelectNext(); ensureVisible(); confirmDel = 0; }
 	if (kDown & KEY_A)     { if (connectFn) connectFn(); }
-	if (kDown & KEY_Y)     editCreds(pbSelected());
-	if (kDown & KEY_X)     pbToggleProto(pbSelected());
+	if (kDown & KEY_Y)     pressButton(2);
+	if (kDown & KEY_X)     pressButton(3);
 
 	if (!(kDown & KEY_TOUCH))
 		return;
@@ -155,8 +190,11 @@ void pbviewUpdate(u32 kDown, u32 kHeld, touchPosition touch)
 
 void pbviewRender(const char* status)
 {
-	C2D_DrawRectSolid(0, 0, 0, SCREEN_W, STATUS_H, 0xFF202030);
-	termgfxDrawText(4, 3, 0.75f, 0xFFCCCCCC, status);
+	// Status bar doubles as the "what just happened" line
+	C2D_DrawRectSolid(0, 0, 0, SCREEN_W, STATUS_H,
+	                  toastFrames > 0 ? 0xFF105010 : 0xFF202030);
+	termgfxDrawText(4, 3, 0.75f, toastFrames > 0 ? 0xFF80FF80 : 0xFFCCCCCC,
+	                toastFrames > 0 ? toast : status);
 
 	int sel = pbSelected();
 	int n = pbCount();
@@ -191,9 +229,10 @@ void pbviewRender(const char* status)
 
 	for (int i = 0; i < NBTN; i++) {
 		bool danger = (i == NBTN - 1) && confirmDel > 0;
+		bool lit = (i == pressedBtn);
 		C2D_DrawRectSolid(buttons[i].x + 1, BTN_TOP + 1, 0,
 		                  buttons[i].w - 2, BTN_H - 2,
-		                  danger ? 0xFF3030C0 : 0xFF383838);
+		                  danger ? 0xFF3030C0 : lit ? 0xFFC08040 : 0xFF383838);
 		const char* label = danger ? "SURE?" : buttons[i].label;
 		float tw = termgfxTextWidth(0.85f, label);
 		termgfxDrawText(buttons[i].x + (buttons[i].w - tw) / 2,
