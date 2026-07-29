@@ -26,11 +26,17 @@ jobs:
             https://github.com/3DSGuy/Project_CTR/releases/download/makerom-v0.19.0/makerom-v0.19.0-ubuntu_x86_64.zip
           unzip -o /tmp/makerom.zip -d /usr/local/bin
           chmod +x /usr/local/bin/makerom
+          apt-get update -qq && apt-get install -y -qq python3-pip cmake g++
+          # bannertool: release binaries need a newer glibc than this
+          # container ships, so build from source (with the VLA-init fix)
           curl -sL -o /tmp/bannertool.tar.gz \
-            https://github.com/carstene1ns/3ds-bannertool/releases/download/1.2.3/bannertool-1.2.3-linux.tar.gz
+            https://github.com/carstene1ns/3ds-bannertool/releases/download/1.2.3/bannertool-1.2.3.tar.gz
           tar xzf /tmp/bannertool.tar.gz -C /tmp
-          install "$(find /tmp -name bannertool -type f | head -1)" /usr/local/bin/bannertool
-          apt-get update -qq && apt-get install -y -qq python3-pip
+          cd /tmp/bannertool-1.2.3
+          sed -i 's/u8 pad\[padLength\] = {0};/u8 pad[4] = {0};/' source/3ds/lz11.cpp
+          cmake -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build -j4
+          install build/bannertool /usr/local/bin/bannertool
           pip3 install --break-system-packages segno || pip3 install segno
 
       - name: Build libssh2 (SSH support)
