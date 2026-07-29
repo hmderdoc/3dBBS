@@ -22,8 +22,6 @@ release over the air (CFW required):
 The QR points at
 `https://github.com/hmderdoc/3dBBS/releases/latest/download/3dBBS.cia`,
 which always resolves to the newest release — it never needs regenerating.
-(Note: works once the repository is public; private release assets require
-authentication that FBI can't provide.)
 
 ## Documentation
 
@@ -156,6 +154,35 @@ keys are accepted without verification in v1: the wire is encrypted, but
 the far end is not authenticated yet (TOFU pinning is a TODO). Builds
 without libssh2 fail SSH dials cleanly.
 
+## Splash screen
+
+Before you dial, the top screen shows the product name rendered in
+**TheDraw fonts** — the ANSI-scene bitmap fonts BBSes have used for banner
+art since the early 90s — with four copies drifting independently through
+3D space at real stereo depth, each respawning in a new random font.
+
+Only the finished renderings are compiled in, never the fonts: 206 of them
+in about 95 KB. `assets/gen_tdf_splash.py` parses a `.tdf` collection at
+build time (Synchronet's `ctrl/tdfonts/` is the canonical one) and emits
+`source/gfx/tdf_splash_data.c` as CP437 cell grids, so the console needs no
+TDF parser and no font files on the SD card. Regenerate with a different
+string via `--text`.
+
+Two things that shaped the result and are worth knowing if you re-run it:
+
+- **Over half the library can't render the name.** TheDraw fonts index
+  ASCII 33..126 through a 94-entry offset table, and a great many mark the
+  digits absent (`0xFFFF`). "3D BBS" needs a `3`, so 1,867 of 3,474 fonts
+  are unusable and are dropped — without that filter they silently render
+  "D BBS".
+- **The collections ship greyscale "silver" variants** beside the colour
+  originals, and they made the splash look drab. Each banner is scored for
+  colour at bake time; the monochrome ones get a random hue multiplied
+  through their grey levels at runtime, which keeps the `░▒▓█` shading
+  intact rather than dropping those fonts.
+
+Font credits are in [assets/TDF-FONTS-CREDITS.md](assets/TDF-FONTS-CREDITS.md).
+
 ## Terminal size
 
 Each board carries its own geometry, because boards disagree: some draw for
@@ -233,7 +260,7 @@ JIT streaming, sixel with correct scroll/overwrite lifetime, 3D scene
 protocol v1, text depth layers (protocol 0.3 — terminal text at real stereo
 depths, PROTOCOL.md §7), three-thread architecture (net+render / APC worker /
 SD flush), telnet/rlogin/SSH, per-board terminal geometry, effective-speed
-readout, lid-close keepalive, RGB LED data indicator.
+readout, lid-close keepalive, RGB LED data indicator, TheDraw-font splash.
 
 Dev builds (`make`) include scaffolding: perf overlay, UDP telemetry
 beacon, L-button test probe, `LocalTest`/`FL-Proxy` phonebook entries with

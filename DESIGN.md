@@ -297,6 +297,26 @@ drawing when its vertex buffer fills and an overflowing GPU command buffer
 svcBreaks outright, so raising the clamp means raising both buffers with
 it. Hand-edited `size` fields are clamped on load rather than trusted.
 
+## 7.7 Pre-login splash
+
+The splash draws the product name in TheDraw fonts as plain C2D over the
+CP437 atlas, deliberately *not* through the citro3d scene layer — that stays
+reserved for BBS-driven content, and a splash has no business competing for
+it. Fonts are parsed by `assets/gen_tdf_splash.py` at build time and baked
+as cell grids (`source/gfx/tdf_splash_data.c`), so no TDF parser ships.
+
+Two non-obvious things, both learned the hard way:
+
+- **Position must be chosen in screen space, then divided by depth.**
+  Picking world-space x/y and multiplying by perspective on the way out
+  collapses every far spawn onto the vanishing point, so banners appear
+  bunched in the centre no matter how wide the spawn range is. Relatedly,
+  `FOCAL` is large relative to the depth range: a short focal length makes
+  that collapse severe.
+- **The 3D slider hands you `iod` in 0..1/3, not 0..1.** Multiplying a
+  pixel constant by it directly produced about three pixels of disparity —
+  a flat animation with a scale ramp. It is normalised before use.
+
 ## 8. Roadmap
 
 - **Phase 0 — scaffold:** toolchain install, hello-triangle + hello-sockets .3dsx running in Azahar

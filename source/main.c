@@ -24,6 +24,7 @@
 #include "term/palette.h"
 #include "net/beacon.h"
 #include "gfx/siximg.h"
+#include "gfx/tdfsplash.h"
 #include "sys/settings.h"
 #include "sys/power.h"
 #include "sys/led.h"
@@ -248,6 +249,7 @@ int main(void)
 
 	scene3dInit();
 	termgfxInit();
+	tdfSplashInit();
 	siximgInit();
 	termInit(&term, 80, 25);
 	term.onScroll = siximgScroll;
@@ -286,6 +288,7 @@ int main(void)
 	u64 lastFrameTime = osGetTime();
 	u32 lastRxTotal = 0, rxRate = 0, peakRate = 0, lastFrameRx = 0;
 	u32 lastRateFrame = 0;
+	float worstMs = 0.0f;   // longest single frame since the last report
 	u64 lastRateTime = osGetTime();
 
 	while (aptMainLoop()) {
@@ -446,7 +449,12 @@ int main(void)
 		// Perf overlay: frame-time EMA, ring backlog, ingest rate
 		{
 			u64 now = osGetTime();
-			frameMsAvg += 0.1f * ((float)(now - lastFrameTime) - frameMsAvg);
+			float thisMs = (float)(now - lastFrameTime);
+			frameMsAvg += 0.1f * (thisMs - frameMsAvg);
+			// An averaged frame time hides exactly the thing worth seeing:
+			// one blocking stall inside an otherwise smooth second.
+			if (thisMs > worstMs)
+				worstMs = thisMs;
 			lastFrameTime = now;
 			if (frame - lastRateFrame >= 60) {
 				int ringBytes;
@@ -463,6 +471,7 @@ int main(void)
 				lastRateTime = now;
 				lastRxTotal = rxTotal;
 				lastRateFrame = frame;
+				worstMs = 0.0f;
 				// ptm/slp/lid/led say whether the sleep and LED features
 				// actually have their services. Both fail silently and
 				// look exactly like "the feature is off" from outside,
@@ -472,9 +481,9 @@ int main(void)
 				PowerStatus ps;
 				powerStatus(&ps);
 				snprintf(perf, sizeof(perf),
-				         "%.1fms r:%dK %luK/s drop%lu %dx%d/%luk ptm%d ndm%d "
+				         "%.1fms mx%.0f r:%dK %luK/s drop%lu %dx%d/%luk ptm%d ndm%d "
 				         "slp%d lid%d led%d shut%lus/%luf",
-				         frameMsAvg, ringBytes / 1024,
+				         frameMsAvg, worstMs, ringBytes / 1024,
 				         (unsigned long)(rxRate / 1024),
 				         (unsigned long)termgfxDropped(),
 				         term.cols, term.rows,
@@ -519,6 +528,8 @@ int main(void)
 		float iod = slider / 3.0f;
 
 		scene3dUpdate();
+		if (!conn && netState != NET_CLOSED)
+			tdfSplashUpdate();
 		frame++;
 
 		C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
@@ -582,10 +593,19 @@ int main(void)
 				siximgDraw(&tv);
 			}
 		} else {
-			scene3dRenderTo(topL, -iod);
-			if (iod > 0.0f)
-				scene3dRenderTo(topR, iod);
+			// Pre-login the top screen is the splash: the product name in
+			// TheDraw fonts, drifting at real stereo depth. Plain C2D over
+			// the same CP437 atlas the terminal uses, so no 3D pipeline is
+			// involved and the scene layer stays reserved for the BBS.
 			C2D_Prepare();
+			C2D_TargetClear(topL, 0xFF000000);
+			C2D_SceneBegin(topL);
+			tdfSplashRender(-iod);
+			if (iod > 0.0f) {
+				C2D_TargetClear(topR, 0xFF000000);
+				C2D_SceneBegin(topR);
+				tdfSplashRender(iod);
+			}
 		}
 
 		// Bottom screen

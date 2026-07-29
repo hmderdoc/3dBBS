@@ -117,19 +117,22 @@ static bool ensureEntry(const char* name, const char* host, u16 port,
 // Guarded by a marker line so a later deliberate switch back sticks.
 static bool migrated;
 
-static void migrateDefaults(void)
+static bool migrateDefaults(void)
 {
 	if (migrated)
-		return;
+		return false;
+	bool changed = false;
 	for (int i = 0; i < count; i++) {
 		PbEntry* e = &entries[i];
 		if (e->proto == PROTO_TELNET && e->port == 23 &&
 		    hostHas(e->host, "futureland.today")) {
 			e->proto = PROTO_RLOGIN;
 			e->port = 1513;
+			changed = true;
 		}
 	}
 	migrated = true;
+	return changed;
 }
 
 // One-time v1 -> v2 upgrade for phonebooks that predate the flags column:
@@ -172,13 +175,17 @@ static void seedShowcase(void)
 	markDirty();
 }
 
+// Only ever mark the book dirty when something actually changed. Flushing
+// unconditionally meant every launch rewrote the file about half a second
+// in — a blocking SD write on the main thread, right on top of the splash
+// animation, for no change at all.
 static void ensureLocalTest(void)
 {
 #ifdef RELEASE_BUILD
 	// Release builds don't create the dev-machine entries — but still run
 	// the migrations for phonebooks written by dev builds.
-	migrateDefaults();
-	markDirty();
+	if (migrateDefaults())
+		markDirty();
 	return;
 #endif
 	bool changed = ensureEntry(LOCALTEST_NAME, LOCALTEST_HOST,
@@ -187,9 +194,9 @@ static void ensureLocalTest(void)
 	// rlogin for the handshake (and autologin) to pass through
 	changed |= ensureEntry(FLPROXY_NAME, DEV_HOST, FLPROXY_PORT,
 	                       PROTO_RLOGIN);
-	migrateDefaults();
-	markDirty(); // always: persists the migration marker and any change
-	(void)changed;
+	changed |= migrateDefaults();
+	if (changed)
+		markDirty();
 }
 
 void pbTick(void)
@@ -329,6 +336,7 @@ void pbLoad(void)
 		strcpy(entries[1].host, "vert.synchro.net");
 		entries[1].port = 23;
 		count = 2;
+		markDirty();   // nothing readable on the card: persist these
 	}
 
 	seedShowcase();
