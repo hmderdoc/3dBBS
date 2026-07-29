@@ -390,17 +390,26 @@ int main(void)
 					C3D_RenderTargetClear(topR, C3D_CLEAR_DEPTH, 0, 0);
 			}
 
+			// Text depth layers: per-eye disparity from the same stereo
+			// projection as the scene. Slider at zero => all-zero shifts
+			// => the flat classic draw.
+			float textShifts[TERM_TEXT_LAYERS];
+			scene3dTextShifts(-iod, term.layerDepth, TERM_TEXT_LAYERS,
+			                  textShifts);
+
 			C2D_Prepare();
 			if (!scene)
 				C2D_TargetClear(topL, termgfxPalette(0));
 			C2D_SceneBegin(topL);
-			termgfxRenderTermView(&term, frame, &tv);
+			termgfxRenderTermView(&term, frame, &tv, textShifts);
 			siximgDraw(&tv);
 			if (iod > 0.0f) {
+				scene3dTextShifts(iod, term.layerDepth,
+				                  TERM_TEXT_LAYERS, textShifts);
 				if (!scene)
 					C2D_TargetClear(topR, termgfxPalette(0));
 				C2D_SceneBegin(topR);
-				termgfxRenderTermView(&term, frame, &tv);
+				termgfxRenderTermView(&term, frame, &tv, textShifts);
 				siximgDraw(&tv);
 			}
 		} else {
@@ -423,7 +432,7 @@ int main(void)
 				float s = 320.0f / (term.cols * 8);
 				termgfxSpanView(&term, 320, 240, s, 240.0f, &bv);
 			}
-			termgfxRenderTermView(&term, frame, &bv);
+			termgfxRenderTermView(&term, frame, &bv, NULL);
 			siximgDraw(&bv);
 		}
 

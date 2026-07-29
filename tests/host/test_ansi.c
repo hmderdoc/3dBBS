@@ -246,6 +246,47 @@ int main(void)
 		CHECK(strcmp(scrollLog, "-2:4-24;") == 0, "IL fires onScroll with band");
 	}
 
+	// --- text depth layers (protocol 0.3): CSI = z select / CSI = * z depth ---
+	{
+		resetAll();
+		feed("A"); // untagged baseline
+		CHECK(cellAt(0, 0)->layer == 0, "default writes land on layer 0");
+		feed("\x1B[=3z");
+		CHECK(term.activeLayer == 3, "CSI = 3 z selects layer");
+		feed("B");
+		CHECK(cellAt(1, 0)->layer == 3, "glyphs stamp the active layer");
+		feed("\x1B[=3;150*z");
+		CHECK(term.layerDepth[3] > 1.49f && term.layerDepth[3] < 1.51f,
+		      "CSI = 3;150 * z sets depth 1.5 world units");
+		// Layer is orthogonal to SGR: reset must not touch it
+		feed("\x1B[0mC");
+		CHECK(cellAt(2, 0)->layer == 3, "SGR 0 keeps the active layer");
+		// Erase fills stamp the active layer too (erasing is writing)
+		feed("\x1B[1;10H\x1B[K");
+		CHECK(cellAt(15, 0)->layer == 3, "EL fill carries the active layer");
+		// Scrolls move tags with their cells; fills use the active layer
+		feed("\x1B[=7z\x1B[10;5HZ");   // 'Z' at (4,9) on layer 7
+		feed("\x1B[=0z\x1B[25;1H\n");  // full-screen scroll up by one
+		CHECK(cellAt(4, 8)->ch == 'Z' && cellAt(4, 8)->layer == 7,
+		      "scrolled cell keeps its tag");
+		CHECK(cellAt(0, 24)->layer == 0, "scroll fill uses the active layer");
+		// Clamps: select saturates, bad depth slot is ignored
+		feed("\x1B[=99z");
+		CHECK(term.activeLayer == TERM_TEXT_LAYERS - 1, "layer select clamps");
+		feed("\x1B[=99;500*z");
+		feed("\x1B[=2;9999*z");
+		CHECK(term.layerDepth[2] > 17.9f && term.layerDepth[2] < 18.1f,
+		      "depth clamps to 18");
+		// Plain CSI z (no '=') is not ours: swallowed harmlessly
+		int keep = term.activeLayer;
+		feed("\x1B[5z");
+		CHECK(term.activeLayer == keep, "plain CSI z ignored");
+		// ESC c resets the whole layer state
+		feed("\x1B""c");
+		CHECK(term.activeLayer == 0, "RIS resets active layer");
+		CHECK(term.layerDepth[3] == 0.0f, "RIS resets layer depths");
+	}
+
 	// --- fuzz: 1MB of noise must not crash or corrupt bounds ---
 	srand(1234);
 	for (int i = 0; i < 1024 * 1024; i++) {
