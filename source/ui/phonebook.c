@@ -13,7 +13,7 @@ static const char* defaultFile =
 	"# Credentials are stored in PLAIN TEXT - anyone with this SD card can\n"
 	"# read them. Leave the password empty where that matters.\n"
 	"# rlogin passes user/pass in its handshake (Synchronet autologin).\n"
-	"Futureland|futureland.today|23|telnet||\n"
+	"Futureland|futureland.today|1513|rlogin||\n"
 	"Vertrauen|vert.synchro.net|23|telnet||\n";
 
 static PbEntry entries[PB_MAX];
@@ -151,7 +151,8 @@ void pbLoad(void)
 		memset(entries, 0, sizeof(entries));
 		strcpy(entries[0].name, "Futureland");
 		strcpy(entries[0].host, "futureland.today");
-		entries[0].port = 23;
+		entries[0].port = 1513;
+		entries[0].proto = PROTO_RLOGIN;
 		strcpy(entries[1].name, "Vertrauen");
 		strcpy(entries[1].host, "vert.synchro.net");
 		entries[1].port = 23;
@@ -184,6 +185,51 @@ void pbSetCreds(int i, const char* user, const char* pass)
 	if (pass)
 		snprintf(entries[i].pass, sizeof(entries[i].pass), "%s", pass);
 	rewriteFile();
+}
+
+void pbSetEntry(int i, const char* name, const char* host, u16 port)
+{
+	if (i < 0 || i >= count)
+		return;
+	if (name && *name)
+		snprintf(entries[i].name, sizeof(entries[i].name), "%s", name);
+	if (host && *host)
+		snprintf(entries[i].host, sizeof(entries[i].host), "%s", host);
+	if (port)
+		entries[i].port = port;
+	rewriteFile();
+}
+
+int pbAdd(const char* name, const char* host, u16 port)
+{
+	if (count >= PB_MAX)
+		return -1;
+	PbEntry* e = &entries[count];
+	memset(e, 0, sizeof(*e));
+	snprintf(e->name, sizeof(e->name), "%s", name && *name ? name : "New BBS");
+	snprintf(e->host, sizeof(e->host), "%s", host ? host : "");
+	e->port = port ? port : 23;
+	e->proto = PROTO_TELNET;
+	count++;
+	rewriteFile();
+	return count - 1;
+}
+
+void pbDelete(int i)
+{
+	if (i < 0 || i >= count || count <= 1)
+		return;
+	memmove(&entries[i], &entries[i + 1], sizeof(PbEntry) * (count - i - 1));
+	count--;
+	if (selected >= count)
+		selected = count - 1;
+	rewriteFile();
+}
+
+void pbSelect(int i)
+{
+	if (i >= 0 && i < count)
+		selected = i;
 }
 
 void pbToggleProto(int i)

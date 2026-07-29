@@ -54,10 +54,9 @@ Deploy over Wi-Fi with the Homebrew Launcher netloader:
 
 | Input | Action |
 |---|---|
-| D-pad up/down (disconnected) | cycle phonebook (`sdmc:/3dBBS/phonebook.txt`) |
-| Y (disconnected) | set username/password for the selected board (system keyboard, password masked) |
-| X (disconnected) | toggle telnet ↔ rlogin for the selected board |
-| Tap status bar | connect / disconnect |
+| Disconnected | bottom screen is the **phonebook editor**: tap a board to select, tap again to dial; buttons DIAL / EDIT / USER / PROTO / ADD / DEL |
+| D-pad up/down, A, Y, X (disconnected) | select, dial, set credentials, toggle protocol |
+| Tap status bar (connected) | disconnect |
 | SELECT | display mode: keyboard → mirror → tall |
 | Touch keyboard | input (shift/ctrl sticky); taps on mirrored terminal send mouse clicks |
 | D-pad (connected) | arrow keys; A=Enter B=Backspace X=Space Y=Esc |
@@ -65,19 +64,27 @@ Deploy over Wi-Fi with the Homebrew Launcher netloader:
 
 ## Connecting and autologin
 
-Phonebook entries live in `sdmc:/3dBBS/phonebook.txt`:
+Boards are managed on-device in the phonebook editor (the bottom screen
+while disconnected): **EDIT** changes name/host/port, **ADD** creates an
+entry, **DEL** removes one (tap twice to confirm), **USER** stores
+credentials, **PROTO** switches telnet ↔ rlogin. Everything persists
+immediately to `sdmc:/3dBBS/phonebook.txt`, which can also be edited
+directly:
 
 ```
 name|host|port|proto|user|pass      # proto: telnet or rlogin
 ```
 
-Trailing fields are optional (3 fields = telnet, no credentials). Set
-credentials on the device with **Y**, or edit the file directly.
+Trailing fields are optional (3 fields = telnet, no credentials).
 
-**rlogin (port 513) autologins**: the stored username and password ride the
-RFC 1282 handshake using SyncTerm's field convention, which Synchronet reads
-for automatic login. Telnet connections do not autologin — the credentials
-are stored but not sent (no prompt-matching yet).
+**rlogin autologins**: the stored username and password ride the RFC 1282
+handshake in SyncTerm's field order (password in the client-username slot,
+username in the server-username slot) — the same convention fTelnet uses, so
+Synchronet logs you straight in. The handshake's terminal-type field is sent
+as `ansi-bbs-cp437-truecolor`, which is what boards key 24-bit colour off.
+Port 513 is the generic default; Futureland ships configured for **1513**.
+Telnet connections do not autologin — credentials are stored but not sent
+(no prompt-matching yet).
 
 > **Credentials are stored in plain text** on the SD card, exactly as
 > SyncTerm's `syncterm.lst` does. Anyone with physical access to the card can

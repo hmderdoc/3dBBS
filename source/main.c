@@ -18,6 +18,7 @@
 #include "net/telnet.h"
 #include "ui/kbd.h"
 #include "ui/phonebook.h"
+#include "ui/pbview.h"
 #include "proto/apc.h"
 #include "audio/apcaudio.h"
 #include "term/palette.h"
@@ -209,6 +210,7 @@ int main(void)
 	pbLoad();
 	telnetSetSize(term.cols, term.rows);
 	kbdInit(kbdSend, kbdToggle);
+	pbviewInit(promptText, kbdToggle);
 	audioInit(hookRespond); // needs sdmc:/3ds/dspfirm.cdc; silent without it
 	apcInit(hookRespond);
 	beaconInit(DEV_MAC_IP, 2325);
@@ -269,8 +271,11 @@ int main(void)
 
 		bool conn = telnetIsConnected();
 
-		// Bottom-screen touch, routed by mode
-		if (mode == MODE_KBD) {
+		// Bottom-screen touch, routed by mode (the phonebook editor owns
+		// the bottom screen while disconnected — handled further down)
+		if (!conn) {
+			// nothing here; pbviewUpdate runs in the disconnected branch
+		} else if (mode == MODE_KBD) {
 			kbdUpdate(kDown, kHeld, touch);
 		} else if (conn && (kDown & KEY_TOUCH)) {
 			TermView bv;
@@ -316,25 +321,8 @@ int main(void)
 			if (kDown & KEY_X)      telnetSend((const u8*)" ", 1);
 			if (kDown & KEY_Y)      telnetSend((const u8*)"\x1B", 1);
 		} else {
-			if (kDown & KEY_DUP)   pbSelectPrev();
-			if (kDown & KEY_DDOWN) pbSelectNext();
-			// Y: set this board's credentials via the system keyboard
-			// (password entry is masked; values go straight to the
-			// phonebook and are never echoed to the screen)
-			if (kDown & KEY_Y) {
-				char user[32] = "", pass[32] = "";
-				snprintf(user, sizeof(user), "%s", pb->user);
-				if (promptText("Username for this board", user,
-				               sizeof(user), false) &&
-				    promptText("Password (stored in plain text on SD)",
-				               pass, sizeof(pass), true)) {
-					pbSetCreds(pbSelected(), user, pass);
-				}
-			}
-			// X: toggle telnet <-> rlogin (rlogin autologins with the
-			// stored credentials on Synchronet boards)
-			if (kDown & KEY_X)
-				pbToggleProto(pbSelected());
+			// Disconnected: the bottom screen is the phonebook editor
+			pbviewUpdate(kDown, kHeld, touch);
 		}
 
 		static const char* stateNames[] = {
@@ -457,7 +445,9 @@ int main(void)
 		// Bottom screen
 		C2D_TargetClear(bottom, 0xFF181818);
 		C2D_SceneBegin(bottom);
-		if (mode == MODE_KBD || !termOnTop) {
+		if (!conn) {
+			pbviewRender(status);
+		} else if (mode == MODE_KBD) {
 			kbdRender(status, conn);
 		} else {
 			TermView bv;

@@ -37,4 +37,10 @@ void pbSetCreds(int i, const char* user, const char* pass);
 // the entry still has the telnet default) and persist
 void pbToggleProto(int i);
 
+// Editing (all persist immediately)
+void pbSetEntry(int i, const char* name, const char* host, u16 port);
+int pbAdd(const char* name, const char* host, u16 port);  // -> index or -1
+void pbDelete(int i);      // refuses to delete the last remaining entry
+void pbSelect(int i);
+
 #endif

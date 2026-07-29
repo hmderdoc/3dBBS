@@ -28,9 +28,15 @@
 #define TTYPE_IS   0
 #define TTYPE_SEND 1
 
-// Terminal name reported via TTYPE — matches SyncTerm's ANSI-BBS default
-// (bbslist.c get_emulation_str) so BBS-side detection treats us the same
+// Terminal name reported via telnet TTYPE — matches SyncTerm's ANSI-BBS
+// default (bbslist.c get_emulation_str) so BBS-side detection treats us
+// the same
 #define TERM_NAME "syncterm"
+
+// Terminal type sent in the rlogin handshake. fTelnet uses this string to
+// tell Synchronet the client is CP437 + truecolor capable, which is exactly
+// what this client is; boards keying colour depth off it will enable 24-bit.
+#define RLOGIN_TERM_NAME "ansi-bbs-cp437-truecolor"
 
 typedef enum {
 	ST_DATA, ST_IAC, ST_WILL, ST_WONT, ST_DO, ST_DONT, ST_SB, ST_SB_IAC
@@ -200,7 +206,8 @@ bool telnetConnectAs(const char* host, u16 port, ConnProto proto_,
 		l = strlen(u);
 		if (l > 63) l = 63;
 		memcpy(hs + n, u, l); n += l; hs[n++] = 0;
-		n += snprintf(hs + n, sizeof(hs) - n, "%s/115200", TERM_NAME) + 1;
+		n += snprintf(hs + n, sizeof(hs) - n, "%s/115200",
+		              RLOGIN_TERM_NAME) + 1;
 		rawSend((const u8*)hs, n);
 		nawsOn = true; // rlogin window changes need no negotiation
 	}
