@@ -29,12 +29,26 @@ if [ ! -d "libssh2-$VER" ]; then
 fi
 cd "libssh2-$VER"
 
+# devkitARM's newlib has no <sys/uio.h>; libssh2 needs struct iovec (used
+# internally only — no writev syscall), so provide a minimal shim.
+mkdir -p "$WORK/compat/sys"
+cat > "$WORK/compat/sys/uio.h" <<'EOF'
+#ifndef _COMPAT_SYS_UIO_H
+#define _COMPAT_SYS_UIO_H
+#include <stddef.h>
+struct iovec {
+    void*  iov_base;
+    size_t iov_len;
+};
+#endif
+EOF
+
 ARCH="-march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft"
 export CC=arm-none-eabi-gcc
 export AR=arm-none-eabi-ar
 export RANLIB=arm-none-eabi-ranlib
 export CFLAGS="$ARCH -O2 -ffunction-sections -fdata-sections -D__3DS__ \
-  -I$PORTLIBS/include -I$DEVKITPRO/libctru/include"
+  -I$WORK/compat -I$PORTLIBS/include -I$DEVKITPRO/libctru/include"
 export CPPFLAGS="$CFLAGS"
 export LDFLAGS="$ARCH -L$PORTLIBS/lib -L$DEVKITPRO/libctru/lib"
 export LIBS="-lmbedtls -lmbedx509 -lmbedcrypto -lctru"

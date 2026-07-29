@@ -35,7 +35,8 @@ int main(void)
 	// only while they sit on the outgoing protocol's default
 	pbToggleProto(0);
 	fl = pbGet(0);
-	CHECK(fl->proto == PROTO_SSH && fl->port == 22, "rlogin -> ssh:22");
+	CHECK(fl->proto == PROTO_SSH && fl->port == 4022,
+	      "rlogin -> ssh:4022 (Futureland's non-standard SSH port)");
 	pbToggleProto(0);
 	fl = pbGet(0);
 	CHECK(fl->proto == PROTO_TELNET && fl->port == 23, "ssh -> telnet:23");

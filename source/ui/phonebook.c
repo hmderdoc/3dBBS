@@ -384,6 +384,13 @@ static u16 rloginPortFor(const char* host)
 	return 513;
 }
 
+static u16 sshPortFor(const char* host)
+{
+	if (hostHas(host, "futureland.today"))
+		return 4022;   // per the sysop; standard 22 is not it
+	return 22;
+}
+
 // Cycle telnet -> rlogin -> ssh -> telnet. The port follows only when it
 // still sits on the previous protocol's default, so custom ports stick.
 void pbToggleProto(int i)
@@ -400,11 +407,11 @@ void pbToggleProto(int i)
 	case PROTO_RLOGIN:
 		e->proto = PROTO_SSH;
 		if (e->port == 513 || e->port == rloginPortFor(e->host))
-			e->port = 22;
+			e->port = sshPortFor(e->host);
 		break;
 	default:
 		e->proto = PROTO_TELNET;
-		if (e->port == 22)
+		if (e->port == 22 || e->port == sshPortFor(e->host))
 			e->port = 23;
 		break;
 	}
