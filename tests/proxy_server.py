@@ -35,7 +35,8 @@ def scan(tag, buf, marks, state):
             start = i + len(m)
 
 
-def pump(tag, src, dst, marks, counter, capture_dcs=False, census=None):
+def pump(tag, src, dst, marks, counter, capture_dcs=False, census=None,
+         dump_all=False):
     state = {}
     carry = b""
     dcs_buf = None
@@ -48,6 +49,10 @@ def pump(tag, src, dst, marks, counter, capture_dcs=False, census=None):
         if not d:
             break
         counter[0] += len(d)
+        if dump_all:
+            # Client->server is low volume; log it verbatim so terminal
+            # capability replies can be compared byte-for-byte
+            print(f"[c2s] {d!r}")
         scan(tag, carry + d, marks, state)
         if census is not None:
             for m in CSI_RE.finditer(d):
@@ -135,7 +140,9 @@ def main():
         threading.Thread(target=pump,
                          args=("bbs->3ds", bbs, cli, MARKS_S2C, down, True, census),
                          daemon=True).start()
-        threading.Thread(target=pump, args=("3ds->bbs", cli, bbs, MARKS_C2S, up),
+        threading.Thread(target=pump,
+                         args=("3ds->bbs", cli, bbs, MARKS_C2S, up, False, None,
+                               True),
                          daemon=True).start()
 
         def rates(down=down, up=up, census=census):
