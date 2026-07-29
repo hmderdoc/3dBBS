@@ -7,3 +7,6 @@ build/
 __pycache__/
 tools/bin/
 vendor/libssh2/
+
+# Claude Code local settings — not part of the project
+.claude/
