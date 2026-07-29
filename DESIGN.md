@@ -223,6 +223,50 @@ disconnected.
 - Public BBSes for testing terminal fidelity + a local Synchronet in Docker for
   protocol work
 
+## 7.5 Network envelope (measured 2026-07; read before touching net code)
+
+The 3DS soc:u TCP stack has a **fixed 8 KB receive window** that cannot be
+safely changed. This caps sustained download throughput at `8192 / RTT`:
+
+| Path RTT | Ceiling  |
+|----------|----------|
+|  20 ms   | ~400 KB/s|
+|  60 ms   | ~133 KB/s|
+| 100 ms   |  ~80 KB/s|
+| 180 ms   |  ~45 KB/s|
+
+Evidence, all from real hardware or independent sources:
+
+1. `getsockopt(SO_RCVBUF)` on a fresh soc:u socket returns 8192; measured
+   direct throughput to a ~181 ms host was ~45 KB/s — exactly 8192/0.181.
+2. Setting `SO_RCVBUF` **after** connect is accepted but changes nothing
+   (throughput unchanged, measured).
+3. Setting it **before** connect (256 KB, 64/32/16 KB all tried) produces
+   sockets that complete the TCP handshake but deliver zero data on real
+   WAN paths, while passing LAN tests. This broke live connectivity and
+   was fully reverted in 002b855. See the DO-NOT comment in
+   `source/net/telnet.c`.
+4. mtheall's ftpd — the most mature 3DS network homebrew, by a devkitPro
+   maintainer — deliberately skips its own buffer-size calls on 3DS
+   (`#ifndef __3DS__` around `setRecvBufferSize`/`setSendBufferSize`,
+   `source/ftpSession.cpp`). The workaround is upstream common knowledge.
+5. A community fork that raised rcvbuf for FTP speed (wjchen/ftbrony)
+   remained slow. No 3DS homebrew demonstrates an enlarged effective TCP
+   window; 3dbrew documents no soc:u API for one.
+
+Consequences:
+
+- Everything except sustained bulk streaming (ANSI, menus, sixels, mesh
+  and file transfers) fits comfortably under the ceiling at any RTT —
+  transfers just take proportionally longer.
+- A continuous audio stream is viable iff its wire rate (base64 included)
+  is below the ceiling for that path. A ~59 KB/s PCM stream needs RTT
+  under ~135 ms. This is a console hardware property — not a client bug,
+  not a server problem, and not fixable by either end of the connection.
+- **Never** manipulate `SO_RCVBUF`/`SO_SNDBUF` or otherwise experiment on
+  the socket path. The failure mode (connects fine, no data, WAN-only) is
+  invisible in LAN testing by construction.
+
 ## 8. Roadmap
 
 - **Phase 0 — scaffold:** toolchain install, hello-triangle + hello-sockets .3dsx running in Azahar
