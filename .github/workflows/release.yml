@@ -33,6 +33,11 @@ jobs:
           apt-get update -qq && apt-get install -y -qq python3-pip
           pip3 install --break-system-packages segno || pip3 install segno
 
+      - name: Build libssh2 (SSH support)
+        run: |
+          dkp-pacman -S --noconfirm 3ds-mbedtls
+          bash tools/build_libssh2.sh
+
       - name: Build RELEASE .3dsx + .cia
         run: make RELEASE=1 cia MAKEROM=makerom BANNERTOOL=bannertool
 
