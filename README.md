@@ -54,12 +54,37 @@ Deploy over Wi-Fi with the Homebrew Launcher netloader:
 
 | Input | Action |
 |---|---|
-| D-pad up/down (disconnected) | cycle phonebook (`sdmc:/3dBBS/phonebook.txt`, `name\|host\|port`) |
+| D-pad up/down (disconnected) | cycle phonebook (`sdmc:/3dBBS/phonebook.txt`) |
+| Y (disconnected) | set username/password for the selected board (system keyboard, password masked) |
+| X (disconnected) | toggle telnet ↔ rlogin for the selected board |
 | Tap status bar | connect / disconnect |
 | SELECT | display mode: keyboard → mirror → tall |
 | Touch keyboard | input (shift/ctrl sticky); taps on mirrored terminal send mouse clicks |
 | D-pad (connected) | arrow keys; A=Enter B=Backspace X=Space Y=Esc |
 | Hold START ~1.5s | quit |
+
+## Connecting and autologin
+
+Phonebook entries live in `sdmc:/3dBBS/phonebook.txt`:
+
+```
+name|host|port|proto|user|pass      # proto: telnet or rlogin
+```
+
+Trailing fields are optional (3 fields = telnet, no credentials). Set
+credentials on the device with **Y**, or edit the file directly.
+
+**rlogin (port 513) autologins**: the stored username and password ride the
+RFC 1282 handshake using SyncTerm's field convention, which Synchronet reads
+for automatic login. Telnet connections do not autologin — the credentials
+are stored but not sent (no prompt-matching yet).
+
+> **Credentials are stored in plain text** on the SD card, exactly as
+> SyncTerm's `syncterm.lst` does. Anyone with physical access to the card can
+> read them. Leave the password empty for boards where that matters.
+
+SSH is **not** supported: devkitPro ships `3ds-mbedtls` but no libssh2 for
+3DS, so it would require porting libssh2 to ARM11 first.
 
 ## Status / dev notes
 

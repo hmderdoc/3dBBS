@@ -45,6 +45,8 @@ static bool eof = false;
 static u8 sbOpt;
 static u8 sbBuf[64];
 static int sbLen;
+static ConnProto proto = PROTO_TELNET;
+static bool rloginAcked;   // consumed the server's leading NUL yet?
 
 // Raw socket bytes land here before IAC processing
 #define RING_SIZE 262144
@@ -87,6 +89,18 @@ static void sendCmd(u8 cmd, u8 opt)
 
 static void sendNaws(void)
 {
+	if (proto == PROTO_RLOGIN) {
+		// RFC 1282 window-change: magic cookie FF FF 's' 's' then
+		// rows, cols, xpixels, ypixels as network-order u16s
+		u8 buf[12] = {
+			0xFF, 0xFF, 's', 's',
+			(u8)(termRows >> 8), (u8)(termRows & 0xFF),
+			(u8)(termCols >> 8), (u8)(termCols & 0xFF),
+			0, 0, 0, 0
+		};
+		rawSend(buf, sizeof(buf));
+		return;
+	}
 	u8 buf[9] = {
 		T_IAC, T_SB, OPT_NAWS,
 		(u8)(termCols >> 8), (u8)(termCols & 0xFF),
@@ -105,10 +119,18 @@ void telnetNotifySize(u16 cols, u16 rows)
 
 bool telnetConnect(const char* host, u16 port)
 {
+	return telnetConnectAs(host, port, PROTO_TELNET, NULL, NULL);
+}
+
+bool telnetConnectAs(const char* host, u16 port, ConnProto proto_,
+                     const char* user, const char* pass)
+{
 	telnetClose();
 	state = ST_DATA;
 	nawsOn = false;
 	eof = false;
+	proto = proto_;
+	rloginAcked = false;
 	ringHead = ringTail = ringCount = 0;
 
 	char portStr[8];
@@ -162,6 +184,26 @@ bool telnetConnect(const char* host, u16 port)
 	setsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof(rcvbuf));
 	int nodelay = 1;
 	setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay));
+
+	if (proto == PROTO_RLOGIN) {
+		// RFC 1282 handshake, SyncTerm field convention (rlogin.c):
+		//   NUL, password NUL, username NUL, "termtype/speed" NUL.
+		// Synchronet reads these for autologin.
+		char hs[192];
+		int n = 0;
+		hs[n++] = 0;
+		const char* p = pass ? pass : "";
+		const char* u = user ? user : "";
+		int l = strlen(p);
+		if (l > 63) l = 63;
+		memcpy(hs + n, p, l); n += l; hs[n++] = 0;
+		l = strlen(u);
+		if (l > 63) l = 63;
+		memcpy(hs + n, u, l); n += l; hs[n++] = 0;
+		n += snprintf(hs + n, sizeof(hs) - n, "%s/115200", TERM_NAME) + 1;
+		rawSend((const u8*)hs, n);
+		nawsOn = true; // rlogin window changes need no negotiation
+	}
 
 	return true;
 
@@ -263,7 +305,17 @@ int telnetRead(u8* out, int cap)
 		ringHead = (ringHead + 1) % RING_SIZE;
 		ringCount--;
 
-		{
+		if (proto == PROTO_RLOGIN) {
+			// Byte-transparent: no IAC. The server's initial NUL ack is
+			// swallowed; OOB control bytes ride the urgent channel we
+			// don't subscribe to, so nothing else needs filtering.
+			if (!rloginAcked) {
+				rloginAcked = true;
+				if (c == 0)
+					continue;
+			}
+			out[outLen++] = c;
+		} else {
 			switch (state) {
 			case ST_DATA:
 				if (c == T_IAC) state = ST_IAC;
@@ -317,6 +369,10 @@ void telnetSend(const u8* data, int len)
 {
 	if (sockfd < 0)
 		return;
+	if (proto == PROTO_RLOGIN) {
+		rawSend(data, len); // transparent: 0xFF is data, not IAC
+		return;
+	}
 	// Escape IAC bytes in outgoing data
 	u8 buf[256];
 	int o = 0;

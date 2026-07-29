@@ -8,10 +8,13 @@
 #define PB_PATH PB_DIR "/phonebook.txt"
 
 static const char* defaultFile =
-	"# 3dBBS dialing directory: name|host|port\n"
-	"Futureland|futureland.today|23\n"
-	"Vertrauen|vert.synchro.net|23\n";
-
+	"# 3dBBS dialing directory\n"
+	"# name|host|port|proto|user|pass   (proto: telnet or rlogin)\n"
+	"# Credentials are stored in PLAIN TEXT - anyone with this SD card can\n"
+	"# read them. Leave the password empty where that matters.\n"
+	"# rlogin passes user/pass in its handshake (Synchronet autologin).\n"
+	"Futureland|futureland.today|23|telnet||\n"
+	"Vertrauen|vert.synchro.net|23|telnet||\n";
 
 static PbEntry entries[PB_MAX];
 static int count;
@@ -32,10 +35,15 @@ static void rewriteFile(void)
 	FILE* f = fopen(PB_PATH, "w");
 	if (!f)
 		return;
-	fputs("# 3dBBS dialing directory: name|host|port\n", f);
-	for (int i = 0; i < count; i++)
-		fprintf(f, "%s|%s|%u\n", entries[i].name, entries[i].host,
-		        entries[i].port);
+	fputs("# 3dBBS dialing directory\n"
+	      "# name|host|port|proto|user|pass   (proto: telnet or rlogin)\n"
+	      "# Credentials are stored in PLAIN TEXT on this card.\n", f);
+	for (int i = 0; i < count; i++) {
+		const PbEntry* e = &entries[i];
+		fprintf(f, "%s|%s|%u|%s|%s|%s\n", e->name, e->host, e->port,
+		        e->proto == PROTO_RLOGIN ? "rlogin" : "telnet",
+		        e->user, e->pass);
+	}
 	fclose(f);
 }
 
@@ -52,9 +60,11 @@ static bool ensureEntry(const char* name, const char* host, u16 port)
 	}
 	if (count < PB_MAX) {
 		PbEntry* e = &entries[count++];
+		memset(e, 0, sizeof(*e));
 		snprintf(e->name, sizeof(e->name), "%s", name);
 		snprintf(e->host, sizeof(e->host), "%s", host);
 		e->port = port;
+		e->proto = PROTO_TELNET;
 		return true;
 	}
 	return false;
@@ -68,28 +78,47 @@ static void ensureLocalTest(void)
 		rewriteFile();
 }
 
+// Split "a|b|c" in place; returns field count, fields[] point into line
+static int splitFields(char* line, char** fields, int maxFields)
+{
+	int n = 0;
+	fields[n++] = line;
+	for (char* p = line; *p && n < maxFields; p++) {
+		if (*p == '|') {
+			*p = 0;
+			fields[n++] = p + 1;
+		}
+	}
+	return n;
+}
+
 static void parseLine(char* line)
 {
-	if (count >= PB_MAX)
+	if (count >= PB_MAX || line[0] == '#' || !strchr(line, '|'))
 		return;
-	char* h = strchr(line, '|');
-	if (!h || line[0] == '#')
+
+	char* f[6] = { NULL };
+	int n = splitFields(line, f, 6);
+	if (n < 2 || !*f[0] || !*f[1])
 		return;
-	*h++ = 0;
-	char* p = strchr(h, '|');
-	int port = 23;
-	if (p) {
-		*p++ = 0;
-		port = atoi(p);
-		if (port <= 0 || port > 65535)
-			port = 23;
-	}
-	if (!*line || !*h)
-		return;
-	PbEntry* e = &entries[count++];
-	snprintf(e->name, sizeof(e->name), "%s", line);
-	snprintf(e->host, sizeof(e->host), "%s", h);
+
+	PbEntry* e = &entries[count];
+	memset(e, 0, sizeof(*e));
+	snprintf(e->name, sizeof(e->name), "%s", f[0]);
+	snprintf(e->host, sizeof(e->host), "%s", f[1]);
+
+	int port = (n > 2 && *f[2]) ? atoi(f[2]) : 23;
+	e->proto = (n > 3 && !strcasecmp(f[3], "rlogin")) ? PROTO_RLOGIN
+	                                                  : PROTO_TELNET;
+	if (port <= 0 || port > 65535)
+		port = e->proto == PROTO_RLOGIN ? 513 : 23;
 	e->port = (u16)port;
+
+	if (n > 4)
+		snprintf(e->user, sizeof(e->user), "%s", f[4]);
+	if (n > 5)
+		snprintf(e->pass, sizeof(e->pass), "%s", f[5]);
+	count++;
 }
 
 void pbLoad(void)
@@ -109,7 +138,7 @@ void pbLoad(void)
 	}
 
 	if (f) {
-		char line[128];
+		char line[256];
 		while (fgets(line, sizeof(line), f)) {
 			line[strcspn(line, "\r\n")] = 0;
 			parseLine(line);
@@ -119,6 +148,7 @@ void pbLoad(void)
 
 	if (count == 0) {
 		// SD unwritable or file empty: bake in the defaults
+		memset(entries, 0, sizeof(entries));
 		strcpy(entries[0].name, "Futureland");
 		strcpy(entries[0].host, "futureland.today");
 		entries[0].port = 23;
@@ -144,3 +174,31 @@ int pbSelected(void) { return selected; }
 
 void pbSelectNext(void) { selected = (selected + 1) % count; }
 void pbSelectPrev(void) { selected = (selected + count - 1) % count; }
+
+void pbSetCreds(int i, const char* user, const char* pass)
+{
+	if (i < 0 || i >= count)
+		return;
+	if (user)
+		snprintf(entries[i].user, sizeof(entries[i].user), "%s", user);
+	if (pass)
+		snprintf(entries[i].pass, sizeof(entries[i].pass), "%s", pass);
+	rewriteFile();
+}
+
+void pbToggleProto(int i)
+{
+	if (i < 0 || i >= count)
+		return;
+	PbEntry* e = &entries[i];
+	if (e->proto == PROTO_TELNET) {
+		e->proto = PROTO_RLOGIN;
+		if (e->port == 23)
+			e->port = 513;
+	} else {
+		e->proto = PROTO_TELNET;
+		if (e->port == 513)
+			e->port = 23;
+	}
+	rewriteFile();
+}

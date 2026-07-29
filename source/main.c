@@ -113,6 +113,21 @@ static void hookAudioStatus(int channel)
 	audioStatusQuery(channel);
 }
 
+// System software keyboard. Returns false if the user cancelled; `secret`
+// masks input for password entry.
+static bool promptText(const char* hint, char* buf, size_t cap, bool secret)
+{
+	SwkbdState kb;
+	swkbdInit(&kb, SWKBD_TYPE_NORMAL, 2, cap - 1);
+	swkbdSetHintText(&kb, hint);
+	swkbdSetInitialText(&kb, buf);
+	swkbdSetValidation(&kb, SWKBD_NOTEMPTY_NOTBLANK, 0, 0);
+	if (secret)
+		swkbdSetPasswordMode(&kb, SWKBD_PASSWORD_HIDE_DELAY);
+	SwkbdButton b = swkbdInputText(&kb, buf, cap);
+	return b == SWKBD_BUTTON_CONFIRM;
+}
+
 // --- input plumbing ---
 
 static void kbdSend(const u8* data, int len)
@@ -243,7 +258,8 @@ int main(void)
 		if (connectPending) {
 			connectPending = false;
 			termReset(&term);
-			if (telnetConnect(pb->host, pb->port)) {
+			if (telnetConnectAs(pb->host, pb->port, pb->proto,
+			                    pb->user, pb->pass)) {
 				netState = NET_CONNECTED;
 				apcSetHost(pb->host);
 			} else {
@@ -302,14 +318,33 @@ int main(void)
 		} else {
 			if (kDown & KEY_DUP)   pbSelectPrev();
 			if (kDown & KEY_DDOWN) pbSelectNext();
+			// Y: set this board's credentials via the system keyboard
+			// (password entry is masked; values go straight to the
+			// phonebook and are never echoed to the screen)
+			if (kDown & KEY_Y) {
+				char user[32] = "", pass[32] = "";
+				snprintf(user, sizeof(user), "%s", pb->user);
+				if (promptText("Username for this board", user,
+				               sizeof(user), false) &&
+				    promptText("Password (stored in plain text on SD)",
+				               pass, sizeof(pass), true)) {
+					pbSetCreds(pbSelected(), user, pass);
+				}
+			}
+			// X: toggle telnet <-> rlogin (rlogin autologins with the
+			// stored credentials on Synchronet boards)
+			if (kDown & KEY_X)
+				pbToggleProto(pbSelected());
 		}
 
 		static const char* stateNames[] = {
 			"tap to connect", "connecting...", "online",
 			"connect FAILED", "connection closed"
 		};
-		snprintf(status, sizeof(status), "%s %s:%u - %s",
+		snprintf(status, sizeof(status), "%s %s:%u %s%s - %s",
 		         pb->name, pb->host, pb->port,
+		         pb->proto == PROTO_RLOGIN ? "rlogin" : "telnet",
+		         pb->user[0] ? "*" : "",   // '*' = credentials stored
 		         netOk ? stateNames[netState] : "network init FAILED");
 
 		audioPoll();
