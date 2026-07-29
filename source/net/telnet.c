@@ -159,26 +159,12 @@ bool telnetConnectAs(const char* host, u16 port, ConnProto proto_,
 		return false;
 	}
 
-	// Receive window, requested BEFORE connect: TCP negotiates window
-	// scaling during the handshake, so asking afterwards cannot raise what
-	// the peer may keep in flight. (window / RTT) is the throughput cap —
-	// 8KB over the 181ms path to Germany is the ~43KB/s we measured.
-	// Ask before connect (measured: post-connect requests are ignored and
-	// leave the 8KB default, which capped the 181ms path to Germany at
-	// ~43KB/s). Do NOT ask for more than the soc service can actually back
-	// out of its shared buffer — 256KB was granted but produced a socket
-	// that connected and then moved no bytes in either direction. 64KB
-	// allows ~360KB/s at that RTT, far more than a BBS session needs.
-	static const int wanted[] = { 64*1024, 32*1024, 16*1024 };
-	for (unsigned i = 0; i < sizeof(wanted)/sizeof(wanted[0]); i++) {
-		int got = 0;
-		socklen_t rbl = sizeof(got);
-		if (setsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, &wanted[i],
-		               sizeof(wanted[i])) == 0 &&
-		    getsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, &got, &rbl) == 0 &&
-		    got >= wanted[i])
-			break;   // honoured in full; stop asking
-	}
+	// DO NOT touch SO_RCVBUF on this socket before connect. Every window
+	// experiment (256KB, then a 64/32/16KB ladder) broke live connections
+	// while passing LAN tests. The stock 8KB window is slow on long paths
+	// (~45KB/s at 180ms RTT) but connects everywhere — connectivity beats
+	// throughput. Revisit only as an explicit per-host opt-in, verified
+	// with DIRECT connections at each size, never as the default.
 
 	// Non-blocking connect with a 5s timeout. No poll()/select()/SO_ERROR —
 	// none of those report connect-completion reliably on 3DS soc (measured:
