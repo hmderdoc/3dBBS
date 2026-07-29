@@ -92,10 +92,16 @@ immediately to `sdmc:/3dBBS/phonebook.txt`, which can also be edited
 directly:
 
 ```
-name|host|port|proto|user|pass      # proto: telnet or rlogin
+name|host|port|proto|user|pass|flags    # proto: telnet or rlogin
 ```
 
-Trailing fields are optional (3 fields = telnet, no credentials).
+Trailing fields are optional (3 fields = telnet, no credentials). `flags`
+is free text: `3d` marks a board known to drive the stereoscopic scene
+protocol — those entries get an animated magenta/cyan border in the list
+(the KEY at the bottom explains it). The tag is tracked locally on your
+list, editable like everything else; the defaults ship with
+**futureland.today** as the first 3D-capable board, plus a handful of
+showcase boards (each one verified answering before inclusion).
 
 **rlogin autologins**: the stored username and password ride the RFC 1282
 handshake in SyncTERM's field order (password in the client-username slot,

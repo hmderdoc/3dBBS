@@ -19,6 +19,17 @@ int main(void)
 	CHECK(!strcmp(fl->name, "Futureland"), "entry 0 is Futureland");
 	CHECK(fl->proto == PROTO_RLOGIN && fl->port == 1513,
 	      "Futureland defaults to rlogin:1513 (513 is closed on that host)");
+	CHECK(fl->flags & PB_FLAG_3D, "Futureland is tagged 3D-capable");
+
+	// The v2 seed adds showcase boards but must not duplicate hosts that
+	// already exist (baked defaults include Vertrauen)
+	int vert = 0, cave = 0;
+	for (int i = 0; i < pbCount(); i++) {
+		if (!strcmp(pbGet(i)->host, "vert.synchro.net")) vert++;
+		if (!strcmp(pbGet(i)->host, "cavebbs.homeip.net")) cave++;
+	}
+	CHECK(vert == 1, "seed does not duplicate an existing host");
+	CHECK(cave == 1, "seed adds missing showcase boards");
 
 	// Toggling round-trips protocol and port together
 	pbToggleProto(0);

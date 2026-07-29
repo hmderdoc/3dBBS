@@ -7,14 +7,22 @@
 #define PB_DIR  "sdmc:/3dBBS"
 #define PB_PATH PB_DIR "/phonebook.txt"
 
+// Showcase defaults. Every host:port here was verified answering with a
+// live banner before inclusion (probed 2026-07-28); flags column "3d" marks
+// boards that drive the 3DS: scene protocol.
 static const char* defaultFile =
-	"# 3dBBS dialing directory\n"
-	"# name|host|port|proto|user|pass   (proto: telnet or rlogin)\n"
+	"# 3dBBS dialing directory  (v2)\n"
+	"# name|host|port|proto|user|pass|flags   (proto: telnet or rlogin)\n"
+	"# flags: 3d = board drives 3dBBS stereoscopic scenes\n"
 	"# Credentials are stored in PLAIN TEXT - anyone with this SD card can\n"
 	"# read them. Leave the password empty where that matters.\n"
 	"# rlogin passes user/pass in its handshake (Synchronet autologin).\n"
-	"Futureland|futureland.today|1513|rlogin||\n"
-	"Vertrauen|vert.synchro.net|23|telnet||\n";
+	"Futureland|futureland.today|1513|rlogin|||3d\n"
+	"Vertrauen|vert.synchro.net|23|telnet|||\n"
+	"Elec.Chicken|bbs.electronicchicken.com|23|telnet|||\n"
+	"Level 29|bbs.fozztexx.com|23|telnet|||\n"
+	"20 For Beers|20forbeers.com|1337|telnet|||\n"
+	"The Cave|cavebbs.homeip.net|23|telnet|||\n";
 
 static PbEntry entries[PB_MAX];
 static int count;
@@ -57,14 +65,15 @@ static void rewriteFile(void)
 	FILE* f = fopen(PB_PATH, "w");
 	if (!f)
 		return;
-	fputs("# 3dBBS dialing directory\n"
-	      "# name|host|port|proto|user|pass   (proto: telnet or rlogin)\n"
+	fputs("# 3dBBS dialing directory  (v2)\n"
+	      "# name|host|port|proto|user|pass|flags   (flags: 3d = 3D scenes)\n"
 	      "# Credentials are stored in PLAIN TEXT on this card.\n", f);
 	for (int i = 0; i < count; i++) {
 		const PbEntry* e = &entries[i];
-		fprintf(f, "%s|%s|%u|%s|%s|%s\n", e->name, e->host, e->port,
+		fprintf(f, "%s|%s|%u|%s|%s|%s|%s\n", e->name, e->host, e->port,
 		        e->proto == PROTO_RLOGIN ? "rlogin" : "telnet",
-		        e->user, e->pass);
+		        e->user, e->pass,
+		        (e->flags & PB_FLAG_3D) ? "3d" : "");
 	}
 	fclose(f);
 }
@@ -115,6 +124,46 @@ static void migrateDefaults(void)
 		}
 	}
 	migrated = true;
+}
+
+// One-time v1 -> v2 upgrade for phonebooks that predate the flags column:
+// tag Futureland as 3D-capable and add the verified showcase boards that
+// aren't already present (matched by host, so user copies are respected).
+// Runs only when the file lacks the "(v2)" header marker; after the next
+// flush the marker is written and user edits (including removing boards)
+// stick permanently.
+static bool fileIsV2;
+
+static void seedShowcase(void)
+{
+	static const struct { const char* name; const char* host; u16 port; } sc[] = {
+		{ "Vertrauen",    "vert.synchro.net",          23 },
+		{ "Elec.Chicken", "bbs.electronicchicken.com", 23 },
+		{ "Level 29",     "bbs.fozztexx.com",          23 },
+		{ "20 For Beers", "20forbeers.com",            1337 },
+		{ "The Cave",     "cavebbs.homeip.net",        23 },
+	};
+	if (fileIsV2)
+		return;
+	for (int i = 0; i < count; i++) {
+		if (hostHas(entries[i].host, "futureland.today"))
+			entries[i].flags |= PB_FLAG_3D;
+	}
+	for (size_t s = 0; s < sizeof(sc) / sizeof(sc[0]); s++) {
+		bool have = false;
+		for (int i = 0; i < count && !have; i++)
+			have = hostHas(entries[i].host, sc[s].host);
+		if (!have && count < PB_MAX) {
+			PbEntry* e = &entries[count++];
+			memset(e, 0, sizeof(*e));
+			snprintf(e->name, sizeof(e->name), "%s", sc[s].name);
+			snprintf(e->host, sizeof(e->host), "%s", sc[s].host);
+			e->port = sc[s].port;
+			e->proto = PROTO_TELNET;
+		}
+	}
+	fileIsV2 = true;
+	markDirty();
 }
 
 static void ensureLocalTest(void)
@@ -172,8 +221,8 @@ static void parseLine(char* line)
 	if (count >= PB_MAX || line[0] == '#' || !strchr(line, '|'))
 		return;
 
-	char* f[6] = { NULL };
-	int n = splitFields(line, f, 6);
+	char* f[7] = { NULL };
+	int n = splitFields(line, f, 7);
 	if (n < 2 || !*f[0] || !*f[1])
 		return;
 
@@ -193,6 +242,8 @@ static void parseLine(char* line)
 		snprintf(e->user, sizeof(e->user), "%s", f[4]);
 	if (n > 5)
 		snprintf(e->pass, sizeof(e->pass), "%s", f[5]);
+	if (n > 6 && hostHas(f[6], "3d"))
+		e->flags |= PB_FLAG_3D;
 	count++;
 }
 
@@ -216,6 +267,8 @@ void pbLoad(void)
 		char line[256];
 		while (fgets(line, sizeof(line), f)) {
 			line[strcspn(line, "\r\n")] = 0;
+			if (line[0] == '#' && strstr(line, "(v2)"))
+				fileIsV2 = true;
 			parseLine(line);
 		}
 		fclose(f);
@@ -234,6 +287,7 @@ void pbLoad(void)
 		count = 2;
 	}
 
+	seedShowcase();
 	ensureLocalTest();
 }
 

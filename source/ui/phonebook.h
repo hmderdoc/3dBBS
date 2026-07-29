@@ -5,15 +5,19 @@
 #include "../net/telnet.h"
 
 // Dialing directory, persisted at sdmc:/3dBBS/phonebook.txt
-//   name|host|port|proto|user|pass       ('#' starts a comment)
+//   name|host|port|proto|user|pass|flags    ('#' starts a comment)
 // Trailing fields are optional: 3 fields = telnet with no credentials.
-// proto is "telnet" or "rlogin".
+// proto is "telnet" or "rlogin". flags is a free-text field; "3d" marks a
+// board known to drive the 3DS: scene protocol (tracked locally — it is a
+// note on our list, not something probed from the wire).
 //
 // SECURITY: credentials are stored in PLAIN TEXT on the SD card (the same
 // as SyncTerm's syncterm.lst). Anyone with the card can read them. Leave
 // the password empty for boards where that matters.
 
 #define PB_MAX 32
+
+#define PB_FLAG_3D 0x01   // board drives the 3DS: 3D scene protocol
 
 typedef struct {
 	char name[32];
@@ -22,6 +26,7 @@ typedef struct {
 	ConnProto proto;
 	char user[32];
 	char pass[32];
+	u8 flags;
 } PbEntry;
 
 void pbLoad(void);
