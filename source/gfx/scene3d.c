@@ -292,6 +292,27 @@ void scene3dCamSet(const float pos[3], const float look[3], float fovDeg)
 	LightLock_Unlock(&sLock);
 }
 
+void scene3dTextShifts(float iod, const float* depths, int n, float* outPx)
+{
+	// Screen-space disparity mirror of Mtx_PerspStereoTilt(fov=camFov,
+	// focLen=2): a point at camera distance D shifts in NDC by
+	// 0.5*iod*(1/focLen - 1/D)/(tan(fov/2)*aspect); scale by the 400px
+	// screen half-width. depths[] are world units BEHIND the glass, so
+	// D = 2 + depth: depth 0 shifts zero (text at the glass, classic),
+	// deeper text diverges exactly like a scene vertex at the same D.
+	LightLock_Lock(&sLock);
+	float fov = camFov;
+	LightLock_Unlock(&sLock);
+	float halfTan = tanf(C3D_AngleFromDegrees(fov) * 0.5f);
+	for (int i = 0; i < n; i++) {
+		float d = depths[i] < 0.0f ? 0.0f : depths[i];
+		float D = 2.0f + d;
+		float ndc = 0.5f * iod * (1.0f / 2.0f - 1.0f / D)
+		            / (halfTan * C3D_AspectRatioTop);
+		outPx[i] = ndc * (400.0f * 0.5f);
+	}
+}
+
 void scene3dSceneClear(void)
 {
 	LightLock_Lock(&sLock);

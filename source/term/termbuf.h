@@ -12,10 +12,18 @@
 #define TERM_MAX_COLS 240
 #define TERM_MAX_ROWS 100
 
+// Text depth layers (protocol 0.3): every cell carries the layer that was
+// active when it was written; each layer has a BBS-set stereo depth in
+// world units behind the glass (0 = at the glass, the classic look). The
+// renderer draws layers deep-to-near with per-eye disparity, so text
+// itself separates in 3D. Layer state is orthogonal to SGR.
+#define TERM_TEXT_LAYERS 16
+
 typedef struct {
 	u32 fg, bg;  // resolved ABGR colors (truecolor-capable)
 	u8 ch;       // CP437 glyph index
 	u8 blink;    // classic blink attribute (unused when iCE colors active)
+	u8 layer;    // text depth layer (0..TERM_TEXT_LAYERS-1) stamped at write
 } TermCell;
 
 typedef struct {
@@ -37,6 +45,11 @@ typedef struct {
 	bool autowrap;        // CSI ?7
 	bool cursorVisible;   // CSI ?25
 	bool iceColors;       // blink bit = bright background
+
+	// Text depth layers: CSI = Ps z selects, CSI = Ps ; Pd * z sets depth
+	// (Pd = centi-world-units behind the glass; stored here in world units)
+	u8 activeLayer;
+	float layerDepth[TERM_TEXT_LAYERS];
 
 	// DECSTBM scroll region, 0-based inclusive rows
 	int marginTop, marginBot;
@@ -88,6 +101,10 @@ void termDeleteLines(Terminal* t, int n);
 void termInsertChars(Terminal* t, int n);
 void termDeleteChars(Terminal* t, int n);
 void termEraseChars(Terminal* t, int n);
+
+// Text depth layers (clamped; depth clamped to 0..18 world units)
+void termSelectLayer(Terminal* t, int layer);
+void termSetLayerDepth(Terminal* t, int layer, float depth);
 
 // Effective cell colors for current SGR state (resolved ABGR)
 u32 termCurFg(const Terminal* t);

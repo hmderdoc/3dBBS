@@ -97,6 +97,15 @@ class Client(threading.Thread):
         self.send(APC + b"3DS:Cam;P=0,0.8,4;L=0,0,0;Fov=40" + ST)
         print("[3d] pyramid uploaded and spinning")
 
+    def send_layer_demo(self):
+        """Text depth layers (protocol 0.3): three lines at three depths."""
+        self.send(b"\x1b[=1;80*z\x1b[=2;300*z")     # layer 1 = 0.8u, layer 2 = 3u deep
+        self.send(b"\x1b[5;10H\x1b[=2z\x1b[36mdeep background text (3.0)")
+        self.send(b"\x1b[7;14H\x1b[=1z\x1b[33mmid-depth text (0.8)")
+        self.send(b"\x1b[9;18H\x1b[=0z\x1b[97mglass-level text (0.0)")
+        self.send(b"\x1b[0m")
+        print("[3d] text layers demo placed (slide the 3D depth slider)")
+
     def run(self):
         print(f"[+] client {self.addr}")
         self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
@@ -121,6 +130,7 @@ class Client(threading.Thread):
         if self.args.mesh:
             try:
                 self.send_3d_demo()
+                self.send_layer_demo()
             except OSError:
                 pass
 

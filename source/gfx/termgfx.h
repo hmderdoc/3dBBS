@@ -27,7 +27,12 @@ void termgfxSpanView(const Terminal* t, int screenW, int screenH, float scale,
                      float yOffPix, TermView* v);
 
 // Render into the current C2D scene. frame drives blink and cursor phase.
-void termgfxRenderTermView(const Terminal* t, u32 frame, const TermView* v);
+// layerShiftPx: per-text-layer horizontal disparity in screen pixels for
+// the eye being drawn (scene3dTextShifts), or NULL for a flat draw (bottom
+// screen, 3D slider at zero). Layers render deep-to-near so nearer text
+// and backgrounds occlude deeper ones.
+void termgfxRenderTermView(const Terminal* t, u32 frame, const TermView* v,
+                           const float* layerShiftPx);
 
 // Map a screen pixel to a grid cell; false if outside the grid
 bool termgfxCellAt(const Terminal* t, const TermView* v, int px, int py,

@@ -115,9 +115,11 @@ Mapping rules that work with today's protocol:
 
 **What v1 cannot do (candidate protocol v2 asks).** Be aware of these before
 designing around them:
-1. **Text is not a 3D object** — a frame cannot itself tilt back or float at
-   depth; only its backdrop can. (Would need a "panel" primitive: render a
-   character rect onto a textured quad in-scene.)
+1. ~~**Text is not a 3D object**~~ — **solved in protocol 0.3** by text depth
+   layers (PROTOCOL.md §7): tag cells with a layer, give the layer a depth,
+   and the frame's text itself floats behind the glass. A frame.js-style
+   library maps stack order straight onto layers. (Text still cannot TILT —
+   layers are parallel planes; a true textured-quad panel remains the v2 ask.)
 2. **No textures** — meshes are vertex-colored only.
 3. **No per-object depth override of the composite** — 3D is always behind
    all text; you can't sandwich an object between two frames.

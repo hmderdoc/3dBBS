@@ -26,8 +26,10 @@ specifically.
 | `CSI 0 c` (plain DA — what Synchronet's `*` autodetect sends) | `CSI = 67;84;101;114;109;1;332 c` ("CTerm" + revision 1.332) |
 | `CSI < 0 c` | `CSI < 0;2;4;7 c` (capabilities: 2=bright bg, 4=pixel ops/sixel, 7=mouse) |
 | telnet TTYPE | `syncterm` |
-| `APC SyncTERM:VER ST` | `APC SyncTERM:VER;3dBBS 0.2 ST` |
-| `APC 3DS:Query ST` | `APC 3DS:Ver;0;2 ST` |
+| `APC SyncTERM:VER ST` | `APC SyncTERM:VER;3dBBS 0.3 ST` |
+| `APC 3DS:Query ST` | `APC 3DS:Ver;0;3 ST` |
+
+Protocol 0.3 adds **text depth layers** (§7); gate them on minor >= 3.
 
 On Synchronet with a `*` terminal type, `console.cterm_version` will be
 `1332` after logon — gate SyncTerm-level features on that. To detect 3dBBS
@@ -179,12 +181,42 @@ JS one-liner shape (Synchronet): pack with a byte array and `base64_encode`,
 `C;S` it, `Mesh;Load` it, `Obj;Add` it. The pyramid in
 `tests/stress_server.py::send_3d_demo` is a complete worked example.
 
-## 7. Recommended session flow
+## 7. Text depth layers (`CSI = ... z`) — protocol 0.3
+
+Terminal text no longer has to sit at the glass. Every cell carries a
+**layer** (0–15) stamped when it is written; each layer has a BBS-set depth,
+and the renderer draws layers deep-to-near with true stereo disparity —
+text itself separates in 3D. Layer state is orthogonal to SGR (SGR 0 does
+not touch it); `ESC c` resets everything to the classic single-plane look.
+
+```
+CSI = Ps z            select the active text layer (Ps = 0..15, clamped)
+CSI = Ps ; Pd * z     set layer Ps depth: Pd centi-world-units BEHIND the
+                      glass (0 = at the glass; 150 = 1.5 units; clamp 0..1800)
+```
+
+- Writes, erases and fills stamp the active layer; scroll/insert/delete ops
+  move tags with their cells. One grid, one cursor — whichever layer wrote a
+  cell last owns it, exactly like color.
+- Depth units match the 3D scene: a text layer at `Pd=150` has the same
+  disparity as a scene vertex at camera distance 3.5 (glass = 2.0). Text can
+  visually sit ON a scene object.
+- The user's 3D slider scales everything; slider at zero renders the classic
+  flat screen. Old clients ignore both sequences harmlessly.
+- Layer 0 at depth 0 is the default: a BBS that never emits `= z` sequences
+  gets today's behavior byte-for-byte.
+- Suggested authoring: keep interactive/focused UI at 0–0.4, mid content
+  around 0.5–1.5, ambient/background text 2–6. Cells are ~4.8px wide; a
+  depth step under ~0.3 units reads as subtle relief, 1+ as clear separation.
+
+## 8. Recommended session flow
 
 ```
 1. (Synchronet does DA autodetect for terminal '*' users automatically)
 2. gate:      console.cterm_version >= 1332   -> SyncTerm-level features OK
 3. probe:     APC 3DS:Query ST                -> reply => 3dBBS: 3D/audio/sixel all safe
+              (minor >= 3 => text depth layers too)
 4. assets:    C;L to dedup, C;S what's missing
-5. drive:     audio / sixel / 3D as above; degrade to ANSI when probe times out
+5. drive:     audio / sixel / 3D / text layers as above; degrade to ANSI when
+              the probe times out
 ```

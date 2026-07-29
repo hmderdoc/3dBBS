@@ -294,6 +294,19 @@ static void csiDispatch(AnsiParser* p, u8 final)
 				respond(p, buf);
 			}
 			break;
+		case 'z':
+			// Text depth layers (protocol 0.3):
+			//   CSI = Ps z       select active layer (0..15)
+			//   CSI = Ps ; Pd * z  set layer Ps depth to Pd centi-world-
+			//                      units behind the glass (0 = glass)
+			if (p->priv == '=') {
+				if (p->intermediate == '*')
+					termSetLayerDepth(t, param(p, 0, 0),
+					                  param(p, 1, 0) / 100.0f);
+				else
+					termSelectLayer(t, param(p, 0, 0));
+			}
+			break;
 		default:
 			break; // unknown private sequence: swallow
 		}
