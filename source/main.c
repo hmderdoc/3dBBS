@@ -23,6 +23,7 @@
 #include "audio/apcaudio.h"
 #include "term/palette.h"
 #include "net/beacon.h"
+#include "net/shot.h"
 #include "gfx/siximg.h"
 #include "gfx/tdfsplash.h"
 #include "sys/settings.h"
@@ -46,6 +47,10 @@ static bool connectPending;
 // or whatever the BBS later asked for. MODE_TALL computes its own row count
 // from the screen, so this is what we restore when leaving it.
 static int cfgCols = PB_DEF_COLS, cfgRows = PB_DEF_ROWS;
+
+#ifndef RELEASE_BUILD
+static bool shotArm;   // R pressed: force stereo, capture after FrameEnd
+#endif
 
 // --- parser hooks ---
 
@@ -308,6 +313,10 @@ int main(void)
 		}
 		if (kDown & KEY_SELECT)
 			setMode((mode + 1) % MODE_COUNT);
+#ifndef RELEASE_BUILD
+		if (kDown & KEY_R)
+			shotArm = true;   // stereo capture -> tools/shotcatch.py
+#endif
 
 #ifndef RELEASE_BUILD
 		// DEBUG probe: L injects a magenta square through the sixel image
@@ -526,6 +535,14 @@ int main(void)
 
 		float slider = osGet3DSliderState();
 		float iod = slider / 3.0f;
+#ifndef RELEASE_BUILD
+		// A capture forces a usable interocular distance regardless of the
+		// physical slider. Otherwise the right eye is never drawn when the
+		// slider is down and the "stereo" pair has no depth in it — the
+		// same trap Rosalina screenshots have.
+		if (shotArm)
+			iod = 0.30f;
+#endif
 
 		scene3dUpdate();
 		if (!conn && netState != NET_CLOSED)
@@ -633,6 +650,15 @@ int main(void)
 #endif
 
 		C3D_FrameEnd(0);
+
+#ifndef RELEASE_BUILD
+		if (shotArm) {
+			// After FrameEnd: the framebuffers now hold the frame just
+			// presented, with both eyes drawn.
+			shotSend(DEV_MAC_IP, 2327);
+			shotArm = false;
+		}
+#endif
 	}
 
 	telnetClose();
