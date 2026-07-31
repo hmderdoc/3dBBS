@@ -26,13 +26,15 @@ which always resolves to the newest release — it never needs regenerating.
 ## Screenshots
 
 Live sessions on [futureland.today](https://futureland.today), captured off
-the console's top screen. These are flat frames from the centre of the
-stereo range — on the hardware the scene sits behind the menu at real depth.
+the console's top screen. **These are real parallax, not an effect added
+afterwards** — the client renders sixteen genuine views by sweeping the
+viewpoint, so what you see moving is the actual stereo depth the hardware
+shows you, flattened into something viewable without a 3DS.
 
 | | |
 |---|---|
-| ![InfoCenter](assets/screenshots/01-infocenter.png) | ![Aquarium screensaver](assets/screenshots/02-aquarium.png) |
-| ![Grid floor screensaver](assets/screenshots/03-grid-floor.png) | ![Avatars and chat](assets/screenshots/04-avatars-chat.png) |
+| ![InfoCenter](assets/screenshots/01-infocenter.gif) | ![Aquarium screensaver](assets/screenshots/02-aquarium.gif) |
+| ![Grid floor screensaver](assets/screenshots/03-grid-floor.gif) | ![Avatars and chat](assets/screenshots/04-avatars-chat.gif) |
 
 ## Documentation
 
