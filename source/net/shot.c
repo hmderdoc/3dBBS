@@ -7,16 +7,17 @@
 
 #ifndef RELEASE_BUILD
 
-// "3DSHOT02", then: u16 width, u16 height, u8 bytesPerPixel, u8 eyeCount,
-// followed by eyeCount raw framebuffers back to back.
-#define SHOT_MAGIC "3DSHOT02"
+// "3DSHOT03", u16 width, u16 height, u8 bytesPerPixel, u8 viewCount,
+// then viewCount raw framebuffers, swept from one extreme to the other.
+#define SHOT_MAGIC "3DSHOT03"
 
-static bool sendAll(int fd, const void* data, u32 len)
+static int fd = -1;
+
+static bool sendAll(const void* data, u32 len)
 {
 	const u8* p = (const u8*)data;
 	while (len) {
-		// A blocking socket can still return a short write; ~576KB of
-		// framebuffer will not go out in one call.
+		// Even a blocking socket returns short writes on payloads this size.
 		int n = send(fd, p, len > 8192 ? 8192 : (int)len, 0);
 		if (n <= 0)
 			return false;
@@ -26,48 +27,61 @@ static bool sendAll(int fd, const void* data, u32 len)
 	return true;
 }
 
-void shotSend(const char* host, int port)
+bool shotOpen(const char* host, int port, u16 w, u16 h, u8 views)
 {
-	u16 wl = 0, hl = 0, wr = 0, hr = 0;
-	u8* left = gfxGetFramebuffer(GFX_TOP, GFX_LEFT, &wl, &hl);
-	u8* right = gfxGetFramebuffer(GFX_TOP, GFX_RIGHT, &wr, &hr);
-	if (!left)
-		return;
-
-	// If the right eye was never drawn this frame it aliases the left, and
-	// sending it would produce a "stereo" pair with no depth. Send one eye
-	// and let the host say so rather than shipping a silent dud.
-	u8 eyes = (right && right != left && wr == wl && hr == hl) ? 2 : 1;
-
-	int fd = socket(AF_INET, SOCK_STREAM, 0);
+	shotClose();
+	fd = socket(AF_INET, SOCK_STREAM, 0);
 	if (fd < 0)
-		return;
+		return false;
 
 	struct sockaddr_in dest;
 	memset(&dest, 0, sizeof(dest));
 	dest.sin_family = AF_INET;
 	dest.sin_port = htons(port);
 	dest.sin_addr.s_addr = inet_addr(host);
-
-	if (connect(fd, (struct sockaddr*)&dest, sizeof(dest)) == 0) {
-		u8 hdr[12];
-		memcpy(hdr, SHOT_MAGIC, 8);
-		hdr[8]  = (u8)(wl & 0xFF);
-		hdr[9]  = (u8)(wl >> 8);
-		hdr[10] = (u8)(hl & 0xFF);
-		hdr[11] = (u8)(hl >> 8);
-		u8 tail[2] = { 3, eyes };   // bytes per pixel, eye count
-
-		u32 bytes = (u32)wl * hl * 3;
-		if (sendAll(fd, hdr, sizeof(hdr)) && sendAll(fd, tail, sizeof(tail)) &&
-		    sendAll(fd, left, bytes) && eyes == 2)
-			sendAll(fd, right, bytes);
+	if (connect(fd, (struct sockaddr*)&dest, sizeof(dest)) != 0) {
+		shotClose();
+		return false;
 	}
-	close(fd);
+
+	u8 hdr[14];
+	memcpy(hdr, SHOT_MAGIC, 8);
+	hdr[8]  = (u8)(w & 0xFF);
+	hdr[9]  = (u8)(w >> 8);
+	hdr[10] = (u8)(h & 0xFF);
+	hdr[11] = (u8)(h >> 8);
+	hdr[12] = 3;        // bytes per pixel
+	hdr[13] = views;
+	if (!sendAll(hdr, sizeof(hdr))) {
+		shotClose();
+		return false;
+	}
+	return true;
+}
+
+bool shotFrame(const u8* fb, u32 bytes)
+{
+	if (fd < 0 || !fb)
+		return false;
+	return sendAll(fb, bytes);
+}
+
+void shotClose(void)
+{
+	if (fd >= 0) {
+		close(fd);
+		fd = -1;
+	}
 }
 
 #else
 
-void shotSend(const char* host, int port) { (void)host; (void)port; }
+bool shotOpen(const char* host, int port, u16 w, u16 h, u8 views)
+{
+	(void)host; (void)port; (void)w; (void)h; (void)views;
+	return false;
+}
+bool shotFrame(const u8* fb, u32 bytes) { (void)fb; (void)bytes; return false; }
+void shotClose(void) {}
 
 #endif

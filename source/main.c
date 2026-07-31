@@ -49,7 +49,13 @@ static bool connectPending;
 static int cfgCols = PB_DEF_COLS, cfgRows = PB_DEF_ROWS;
 
 #ifndef RELEASE_BUILD
-static bool shotArm;   // R pressed: force stereo, capture after FrameEnd
+// Multi-view capture. R sweeps the eye offset across SHOT_VIEWS renders with
+// everything else frozen, which the host turns into a parallax loop. Two
+// views alone cannot do this: a 2-frame wiggle at real stereo disparity
+// reads as a glitch, not as depth.
+#define SHOT_VIEWS 16
+#define SHOT_IOD   0.25f
+static int shotStep = -1;   // -1 idle, else the view being rendered
 #endif
 
 // --- parser hooks ---
@@ -314,8 +320,12 @@ int main(void)
 		if (kDown & KEY_SELECT)
 			setMode((mode + 1) % MODE_COUNT);
 #ifndef RELEASE_BUILD
-		if (kDown & KEY_R)
-			shotArm = true;   // stereo capture -> tools/shotcatch.py
+		if ((kDown & KEY_R) && shotStep < 0) {
+			u16 fw = 0, fh = 0;
+			gfxGetFramebuffer(GFX_TOP, GFX_LEFT, &fw, &fh);
+			if (shotOpen(DEV_MAC_IP, 2327, fw, fh, SHOT_VIEWS))
+				shotStep = 0;   // -> tools/shotcatch.py
+		}
 #endif
 
 #ifndef RELEASE_BUILD
@@ -380,7 +390,11 @@ int main(void)
 				sendMouseClick(col, row);
 		}
 
-		if (conn || netState == NET_CONNECTED) {
+		bool capturing = false;
+#ifndef RELEASE_BUILD
+		capturing = (shotStep >= 0);
+#endif
+		if ((conn || netState == NET_CONNECTED) && !capturing) {
 			// Always drain the socket (keeps the sender's TCP window open),
 			// then parse on a ~6ms budget so dense bursts spread across
 			// frames instead of stalling one
@@ -536,17 +550,20 @@ int main(void)
 		float slider = osGet3DSliderState();
 		float iod = slider / 3.0f;
 #ifndef RELEASE_BUILD
-		// A capture forces a usable interocular distance regardless of the
-		// physical slider. Otherwise the right eye is never drawn when the
-		// slider is down and the "stereo" pair has no depth in it — the
-		// same trap Rosalina screenshots have.
-		if (shotArm)
-			iod = 0.30f;
+		// Sweep the viewpoint across the capture, ignoring the physical
+		// slider entirely — otherwise a slider at zero yields a sequence of
+		// identical frames and no parallax at all.
+		if (shotStep >= 0)
+			iod = SHOT_IOD * (2.0f * shotStep / (SHOT_VIEWS - 1) - 1.0f);
 #endif
 
-		scene3dUpdate();
-		if (!conn && netState != NET_CLOSED)
-			tdfSplashUpdate();
+		if (!capturing) {
+			// Frozen while capturing: any animation between views would be
+			// baked into the loop as judder on top of the parallax.
+			scene3dUpdate();
+			if (!conn && netState != NET_CLOSED)
+				tdfSplashUpdate();
+		}
 		frame++;
 
 		C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
@@ -652,11 +669,14 @@ int main(void)
 		C3D_FrameEnd(0);
 
 #ifndef RELEASE_BUILD
-		if (shotArm) {
-			// After FrameEnd: the framebuffers now hold the frame just
-			// presented, with both eyes drawn.
-			shotSend(DEV_MAC_IP, 2327);
-			shotArm = false;
+		if (shotStep >= 0) {
+			// After FrameEnd the framebuffer holds the view just presented.
+			u16 fw = 0, fh = 0;
+			u8* fb = gfxGetFramebuffer(GFX_TOP, GFX_LEFT, &fw, &fh);
+			if (!shotFrame(fb, (u32)fw * fh * 3) || ++shotStep >= SHOT_VIEWS) {
+				shotClose();
+				shotStep = -1;
+			}
 		}
 #endif
 	}

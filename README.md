@@ -23,6 +23,17 @@ The QR points at
 `https://github.com/hmderdoc/3dBBS/releases/latest/download/3dBBS.cia`,
 which always resolves to the newest release — it never needs regenerating.
 
+## Screenshots
+
+Live sessions on [futureland.today](https://futureland.today), captured off
+the console's top screen. These are flat frames from the centre of the
+stereo range — on the hardware the scene sits behind the menu at real depth.
+
+| | |
+|---|---|
+| ![InfoCenter](assets/screenshots/01-infocenter.png) | ![Aquarium screensaver](assets/screenshots/02-aquarium.png) |
+| ![Grid floor screensaver](assets/screenshots/03-grid-floor.png) | ![Avatars and chat](assets/screenshots/04-avatars-chat.png) |
+
 ## Documentation
 
 - **[docs/PROTOCOL.md](docs/PROTOCOL.md)** — the complete wire-protocol
