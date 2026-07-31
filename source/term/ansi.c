@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "ansi.h"
+#include "keymode.h"
 #include "palette.h"
 
 enum {
@@ -138,8 +139,15 @@ static void doMode(AnsiParser* p, bool set)
 			case 1000: t->mouseNormal = set; break;
 			case 1006: t->mouseSGR = set; break;
 			}
+		} else if (p->priv == '=') {
+			// CTerm physical key reports (cterm.adoc). These are what
+			// SyncTERM-aware doors use for true key-up; the door library
+			// enables both together (src/doors/termgfx/keymode.c).
+			switch (v) {
+			case 1: keymodeSetPhysical(set); break;
+			case 2: keymodeSetSuppress(set); break;
+			}
 		}
-		// non-private and CSI = modes: none implemented yet
 	}
 	t->rev++;
 }
@@ -151,8 +159,9 @@ static void doDA(AnsiParser* p)
 		respond(p, ANSI_CTERM_DA);
 	} else if (p->priv == '<') {
 		// CTDA: capability list. 2 = bright background, 4 = pixel
-		// operations (sixel), 7 = mouse — what we actually implement.
-		respond(p, "\x1B[<0;2;4;7c");
+		// operations (sixel), 7 = mouse, 8 = physical key press/release
+		// reports — what we actually implement.
+		respond(p, "\x1B[<0;2;4;7;8c");
 	}
 }
 
@@ -226,7 +235,9 @@ static void doRequestMode(AnsiParser* p)
 	} else if (p->priv == '=') {
 		switch (ps) {
 		case 4: case 5: pm = 2; break;  // LCF: reset, not forced
-		default: pm = 4; break;         // key reports/DoorWay: not supported
+		case 1: pm = keymodePhysical() ? 1 : 2; break;  // physical reports
+		case 2: pm = keymodeSuppress() ? 1 : 2; break;  // suppress translated
+		default: pm = 4; break;         // DoorWay: not supported
 		}
 		snprintf(buf, sizeof(buf), "\x1B[=%d;%d$y", ps, pm);
 	} else {
@@ -294,6 +305,24 @@ static void csiDispatch(AnsiParser* p, u8 final)
 				respond(p, buf);
 			}
 			break;
+		case 'u':
+			// kitty keyboard protocol. Plain `CSI u` is SCORC and is
+			// handled with the non-private finals; only these private
+			// forms are the progressive-enhancement interface.
+			if (p->priv == '?') {
+				// Query: reply with the flags currently in force. A reply
+				// at all is what tells a door the protocol is available.
+				snprintf(buf, sizeof(buf), "\x1B[?%luu",
+				         (unsigned long)keymodeKittyFlags());
+				respond(p, buf);
+			} else if (p->priv == '>') {
+				keymodePushKitty((u32)param(p, 0, 0));
+			} else if (p->priv == '<') {
+				keymodePopKitty();
+			} else if (p->priv == '=') {
+				keymodeSetKitty((u32)param(p, 0, 0), param(p, 1, 1));
+			}
+			break;
 		case 'z':
 			// Text depth layers (protocol 0.3):
 			//   CSI = Ps z       select active layer (0..15)
@@ -355,7 +384,7 @@ static void csiDispatch(AnsiParser* p, u8 final)
 		termSetMargins(t, param(p, 0, 1) - 1, param(p, 1, t->rows) - 1);
 		break;
 	case 's': termSaveCursor(t); break;
-	case 'u': termRestoreCursor(t); break;
+	case 'u': termRestoreCursor(t); break;   // SCORC
 	case 'h': doMode(p, true); break;
 	case 'l': doMode(p, false); break;
 	case 'm': doSGR(p); break;

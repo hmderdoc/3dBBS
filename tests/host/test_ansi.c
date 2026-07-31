@@ -6,6 +6,7 @@
 #include <string.h>
 #include "../../source/term/termbuf.h"
 #include "../../source/term/ansi.h"
+#include "../../source/term/keymode.h"
 #include "../../source/term/palette.h"
 #include "../../source/gfx/sixel.h"
 
@@ -118,7 +119,76 @@ int main(void)
 	CHECK(strcmp(resp, ANSI_CTERM_DA) == 0, "plain DA returns CTerm banner");
 	resetAll();
 	feed("\x1B[<0c");
-	CHECK(strcmp(resp, "\x1B[<0;2;4;7c") == 0, "CTDA returns capability list");
+	CHECK(strcmp(resp, "\x1B[<0;2;4;7;8c") == 0,
+	      "CTDA advertises 8 (physical key reports) alongside 2/4/7");
+
+	// --- keyboard reporting modes (cterm.adoc) ---
+	// Doors climb evdev -> kitty -> plain bytes; each rung has to work and,
+	// more importantly, must not fire when the far end never asked for it.
+	{
+		u8 out[64];
+		KeyEvent ev;
+		memset(&ev, 0, sizeof(ev));
+		ev.evdev = 103;            // EVDEV_KEY_UP
+		ev.bytes = "\x1B[A";
+		ev.nbytes = 3;
+		ev.edge = KEY_PRESS;
+
+		keymodeReset();
+		int n = keymodeEncode(&ev, out, sizeof(out));
+		CHECK(n == 3 && !memcmp(out, "\x1B[A", 3),
+		      "no modes set: plain translated bytes");
+		ev.edge = KEY_RELEASE;
+		CHECK(keymodeEncode(&ev, out, sizeof(out)) == 0,
+		      "no modes set: releases are silent");
+
+		// CSI = 1 h — physical reports, translation still flowing
+		resetAll();
+		feed("\x1B[=1h");
+		CHECK(keymodePhysical(), "CSI = 1 h enables physical reports");
+		ev.edge = KEY_PRESS;
+		n = keymodeEncode(&ev, out, sizeof(out));
+		out[n] = 0;
+		CHECK(!strcmp((char*)out, "\x1B[=103K\x1B[A"),
+		      "physical press report precedes the translated bytes");
+		ev.edge = KEY_RELEASE;
+		n = keymodeEncode(&ev, out, sizeof(out));
+		out[n] = 0;
+		CHECK(!strcmp((char*)out, "\x1B[=103k"), "release reported as lower k");
+
+		// CSI = 2 h — suppress translation, physical only
+		feed("\x1B[=2h");
+		CHECK(keymodeSuppress(), "CSI = 2 h suppresses translated input");
+		ev.edge = KEY_PRESS;
+		n = keymodeEncode(&ev, out, sizeof(out));
+		out[n] = 0;
+		CHECK(!strcmp((char*)out, "\x1B[=103K"),
+		      "suppressed: physical report only, no translated bytes");
+
+		feed("\x1B[=2l\x1B[=1l");
+		CHECK(!keymodePhysical() && !keymodeSuppress(), "CSI = 1/2 l reset");
+
+		// kitty progressive enhancement
+		resetAll();
+		feed("\x1B[?u");
+		CHECK(!strcmp(resp, "\x1B[?0u"),
+		      "CSI ? u answers with current flags (0 = nothing pushed)");
+		feed("\x1B[>11u");
+		CHECK(keymodeKittyFlags() == 11, "CSI > 11 u pushes flags");
+		ev.edge = KEY_PRESS;
+		ev.codepoint = 0;
+		n = keymodeEncode(&ev, out, sizeof(out));
+		out[n] = 0;
+		CHECK(!strcmp((char*)out, "\x1B[103;1:1u"),
+		      "kitty press carries modifiers and event type");
+		ev.edge = KEY_RELEASE;
+		n = keymodeEncode(&ev, out, sizeof(out));
+		out[n] = 0;
+		CHECK(!strcmp((char*)out, "\x1B[103;1:3u"), "kitty reports releases");
+		feed("\x1B[<u");
+		CHECK(keymodeKittyFlags() == 0, "CSI < u pops back");
+		keymodeReset();
+	}
 
 	// --- sixel decode ---
 	{

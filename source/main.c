@@ -19,6 +19,10 @@
 #include "ui/kbd.h"
 #include "ui/phonebook.h"
 #include "ui/pbview.h"
+#include "ui/menu.h"
+#include "ui/ctrlmap.h"
+#include "ui/ctrlin.h"
+#include "term/keymode.h"
 #include "proto/apc.h"
 #include "audio/apcaudio.h"
 #include "term/palette.h"
@@ -164,8 +168,12 @@ static void kbdSend(const u8* data, int len)
 static void kbdToggle(void)
 {
 	if (telnetIsConnected()) {
+		// Drop held keys before the socket goes: a door that enabled
+		// physical reports would otherwise never see the release edges.
+		ctrlinReleaseAll();
 		telnetClose();
 		apcReset();
+		keymodeReset();
 		netState = NET_IDLE;
 	} else if (netOk) {
 		connectPending = true;
@@ -279,6 +287,9 @@ int main(void)
 	pbLoad();
 	telnetSetSize(term.cols, term.rows);
 	kbdInit(kbdSend, kbdToggle);
+	menuInit();
+	cmLoad();
+	ctrlinInit(kbdSend);
 	pbviewInit(promptText, kbdToggle);
 	audioInit(hookRespond); // needs sdmc:/3ds/dspfirm.cdc; silent without it
 	apcInit(hookRespond);
@@ -306,16 +317,29 @@ int main(void)
 		hidScanInput();
 		u32 kDown = hidKeysDown();
 		u32 kHeld = hidKeysHeld();
+		u32 kUp = hidKeysUp();
+		circlePosition circlePad, cStick;
+		hidCircleRead(&circlePad);
+		hidCstickRead(&cStick);
 		touchPosition touch;
 		hidTouchRead(&touch);
 
-		// Hold START ~1.5s to quit (a stray tap shouldn't kill a session)
-		static int startHeld;
-		if (kHeld & KEY_START) {
-			if (++startHeld >= 90)
+		// START opens the menu; quitting lives in there now. START and
+		// SELECT stay reserved from controller remapping so the menu is
+		// always reachable whatever the active mapping does.
+		if (kDown & KEY_START)
+			menuToggle();
+		if (menuIsOpen()) {
+			// Nothing should stay held while the menu is up, or a door sees
+			// a key stuck down for as long as the menu is open.
+			ctrlinReleaseAll();
+			MenuAction ma = menuUpdate(kDown, kHeld, touch);
+			if (ma == MENU_QUIT)
 				break;
-		} else {
-			startHeld = 0;
+			// Swallow everything else: nothing behind the menu should see
+			// this frame's input.
+			kDown = kHeld = 0;
+			touch.px = touch.py = 0;
 		}
 		if (kDown & KEY_SELECT)
 			setMode((mode + 1) % MODE_COUNT);
@@ -416,14 +440,17 @@ int main(void)
 		}
 
 		if (conn) {
-			if (kDown & KEY_DUP)    telnetSend((const u8*)"\x1B[A", 3);
-			if (kDown & KEY_DDOWN)  telnetSend((const u8*)"\x1B[B", 3);
-			if (kDown & KEY_DRIGHT) telnetSend((const u8*)"\x1B[C", 3);
-			if (kDown & KEY_DLEFT)  telnetSend((const u8*)"\x1B[D", 3);
-			if (kDown & KEY_A)      telnetSend((const u8*)"\r", 1);
-			if (kDown & KEY_B)      telnetSend((const u8*)"\b", 1);
-			if (kDown & KEY_X)      telnetSend((const u8*)" ", 1);
-			if (kDown & KEY_Y)      telnetSend((const u8*)"\x1B", 1);
+			// Every physical control now goes through the active mapping,
+			// which decides both the evdev identity and the byte fallback.
+			ctrlinUpdate(kDown, kUp, kHeld, circlePad, cStick);
+			float px, py;
+			if (ctrlinClicked() && ctrlinPointer(&px, &py)) {
+				TermView tv;
+				termgfxFitView(&term, 400, 240, &tv);
+				int col, row;
+				if (termgfxCellAt(&term, &tv, (int)px, (int)py, &col, &row))
+					sendMouseClick(col, row);
+			}
 		} else {
 			// Disconnected: the bottom screen is the phonebook editor
 			pbviewUpdate(kDown, kHeld, touch);
@@ -666,6 +693,9 @@ int main(void)
 		termgfxDrawText(2, 231, 0.5f, 0xFF00CCCC, perf);
 #endif
 
+		if (menuIsOpen())
+			menuRender();
+
 		C3D_FrameEnd(0);
 
 #ifndef RELEASE_BUILD
@@ -683,6 +713,7 @@ int main(void)
 
 	telnetClose();
 	pbFlush();   // persist any phonebook edit still buffered
+	cmFlush();
 	ledExit();
 	powerExit();
 	apcExit();

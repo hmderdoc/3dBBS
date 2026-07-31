@@ -6,6 +6,7 @@ cc -Wall -O1 -I . -o /tmp/3dbbs_test_ansi \
 	test_ansi.c \
 	../../source/term/termbuf.c \
 	../../source/term/ansi.c \
+	../../source/term/keymode.c \
 	../../source/term/palette.c \
 	../../source/gfx/sixel.c
 /tmp/3dbbs_test_ansi
