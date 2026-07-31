@@ -5,6 +5,11 @@
 #include "ctrlmap.h"
 #include "../gfx/termgfx.h"
 
+// Above the terminal's cell range (0.1..0.95). Draw order alone does not put
+// an overlay on top: the depth test does, and a panel at z=0 loses to the
+// glyphs of whatever is behind it.
+#define UI_Z 0.985f
+
 #define SCREEN_W 320
 #define SCREEN_H 240
 #define TITLE_H  20
@@ -320,8 +325,9 @@ void ctrlviewRender(void)
 	if (screen == CV_CLOSED)
 		return;
 
-	C2D_DrawRectSolid(0, 0, 0, SCREEN_W, SCREEN_H, 0xFF101018);
-	C2D_DrawRectSolid(0, 0, 0, SCREEN_W, TITLE_H, 0xFF202030);
+	termgfxSetTextDepth(UI_Z);
+	C2D_DrawRectSolid(0, 0, UI_Z, SCREEN_W, SCREEN_H, 0xFF101018);
+	C2D_DrawRectSolid(0, 0, UI_Z, SCREEN_W, TITLE_H, 0xFF202030);
 
 	const char* title = screen == CV_LIST ? "Controller Mappings"
 	                  : screen == CV_EDIT ? cmGet(editIdx)->name
@@ -335,7 +341,7 @@ void ctrlviewRender(void)
 		int idx = scroll + i;
 		float y = LIST_TOP + i * ROW_H;
 		if (idx == sel)
-			C2D_DrawRectSolid(0, y, 0, SCREEN_W, ROW_H - 1, 0xFF603010);
+			C2D_DrawRectSolid(0, y, UI_Z, SCREEN_W, ROW_H - 1, 0xFF603010);
 		rowText(idx, left, sizeof(left), right, sizeof(right));
 		termgfxDrawText(5, y + 2, 0.8f,
 		                idx == sel ? 0xFFFFFFFF : 0xFFBBBBBB, left);
@@ -350,16 +356,17 @@ void ctrlviewRender(void)
 		float frac = (float)VISIBLE / n;
 		float bh = (LIST_BOT - LIST_TOP) * frac;
 		float by = LIST_TOP + (LIST_BOT - LIST_TOP) * ((float)scroll / n);
-		C2D_DrawRectSolid(SCREEN_W - 3, by, 0, 3, bh, 0xFF808080);
+		C2D_DrawRectSolid(SCREEN_W - 3, by, UI_Z, 3, bh, 0xFF808080);
 	}
 
 	int nb;
 	Btn* b = btns(&nb);
 	for (int i = 0; i < nb; i++) {
-		C2D_DrawRectSolid(b[i].x + 1, BTN_TOP + 1, 0, b[i].w - 2, BTN_H - 2,
+		C2D_DrawRectSolid(b[i].x + 1, BTN_TOP + 1, UI_Z, b[i].w - 2, BTN_H - 2,
 		                  i == hot ? 0xFFC08040 : 0xFF383838);
 		float tw = termgfxTextWidth(0.8f, b[i].label);
 		termgfxDrawText(b[i].x + (b[i].w - tw) / 2, BTN_TOP + 7, 0.8f,
 		                0xFFFFFFFF, b[i].label);
 	}
+	termgfxSetTextDepth(0.5f);
 }

@@ -718,10 +718,20 @@ int main(void)
 		termgfxDrawText(2, 231, 0.5f, 0xFF00CCCC, perf);
 #endif
 
-		if (ctrlviewIsOpen())
-			ctrlviewRender();
-		else if (menuIsOpen())
-			menuRender();
+		if (ctrlviewIsOpen() || menuIsOpen()) {
+			// Overlays must sit above everything already on this screen.
+			// Draw order alone does not achieve that: the terminal renders
+			// its cells across z 0.1..0.95 and UI text lands at 0.5, so an
+			// overlay drawn afterwards still loses the depth test and ends
+			// up interleaved with the glyphs behind it. Clearing depth
+			// first is the same trick the 3D scene composite uses above.
+			C2D_Flush();
+			C3D_RenderTargetClear(bottom, C3D_CLEAR_DEPTH, 0, 0);
+			if (ctrlviewIsOpen())
+				ctrlviewRender();
+			else
+				menuRender();
+		}
 
 		C3D_FrameEnd(0);
 

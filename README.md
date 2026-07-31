@@ -122,8 +122,8 @@ raises the throughput ceiling.
 | Tap status bar (connected) | disconnect |
 | SELECT | display mode: keyboard → mirror → tall |
 | Touch keyboard | input (shift/ctrl sticky); taps on mirrored terminal send mouse clicks |
-| D-pad (connected) | arrow keys; A=Enter B=Backspace X=Space Y=Esc |
-| Hold START ~1.5s | quit |
+| D-pad (connected) | arrow keys; A=Enter B=Backspace X=Space Y=Esc — all remappable |
+| START | menu: controller mapping, terminal size, quit |
 
 ## Connecting and autologin
 
@@ -195,6 +195,34 @@ Two things that shaped the result and are worth knowing if you re-run it:
   intact rather than dropping those fonts.
 
 Font credits are in [assets/TDF-FONTS-CREDITS.md](assets/TDF-FONTS-CREDITS.md).
+
+## Controls and key reporting
+
+**START opens a menu** — controller mapping, terminal size, and quit. START
+and SELECT are the only controls that can't be remapped, so a mapping can
+never lock you out of it.
+
+Named controller mappings live in `sdmc:/3dBBS/controls.txt` and are edited
+on-device. Every button, the D-pad, the circle pad and the C-stick can be
+bound; the sticks can instead act as a second D-pad or drive a pointer. Key
+repeat delay and rate are configurable, and the stock mapping reproduces the
+old fixed behaviour so nothing changes until you go looking.
+
+A plain terminal sends bytes on press and nothing on release, which is
+useless for hold-to-move. Synchronet's door library climbs a ladder of three
+key-reporting modes, and 3dBBS implements all of them:
+
+| Mode | How it's enabled | What a door gets |
+|---|---|---|
+| **evdev** | CTDA advertises capability 8; door sends `CSI = 1 h` (and `CSI = 2 h` to suppress translation) | `CSI = Pk K` / `CSI = Pk k` — press *and release*, keyed by a layout-independent physical keycode |
+| **kitty** | door queries `CSI ? u`, then pushes `CSI > Ps u` | CSI-u events with explicit press/repeat/release |
+| **bytes** | neither | ordinary translated sequences, press only |
+
+Because of that, every binding stores **both** an evdev keycode and a byte
+sequence — the far end decides which it receives, and one mapping serves all
+three rungs. The byte fallbacks use the ANSI-BBS set Synchronet actually
+decodes (Home `ESC[H`, End `ESC[K`, PgUp `ESC[V`, PgDn `ESC[U`), not the
+xterm one.
 
 ## Terminal size
 

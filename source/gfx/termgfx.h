@@ -49,6 +49,13 @@ void termgfxRenderTermView(const Terminal* t, u32 frame, const TermView* v,
 bool termgfxCellAt(const Terminal* t, const TermView* v, int px, int py,
                    int* col, int* row);
 
+// Depth for UI text drawn by termgfxDrawChar/Text. Defaults to 0.5, which
+// sits inside the terminal's own 0.1..0.95 cell range — fine for status
+// text on an otherwise empty screen, wrong for anything meant to cover the
+// terminal. Modal overlays raise it and restore it afterwards.
+void termgfxSetTextDepth(float z);
+float termgfxTextDepth(void);
+
 // UI text helpers (x,y in pixels, glyphs are 8x16 * scale)
 void termgfxDrawChar(float x, float y, float scale, u32 color, u8 ch);
 void termgfxDrawText(float x, float y, float scale, u32 color, const char* s);

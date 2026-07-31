@@ -59,12 +59,21 @@ void termgfxExit(void)
 	}
 }
 
+// UI text depth. The terminal renders its cells across z 0.1..0.95, so text
+// pinned at a fixed 0.5 interleaves with the glyphs of whatever is behind
+// it. Overlays raise this (and their own rects) above that range so they
+// cover cleanly instead of competing.
+static float uiDepth = 0.5f;
+
+void termgfxSetTextDepth(float z) { uiDepth = z; }
+float termgfxTextDepth(void) { return uiDepth; }
+
 void termgfxDrawChar(float x, float y, float scale, u32 color, u8 ch)
 {
 	C2D_Image img = { fontTex, &glyphSub[ch] };
 	C2D_ImageTint tint;
 	C2D_PlainImageTint(&tint, color, 1.0f);
-	C2D_DrawImageAt(img, x, y, 0.5f, &tint, scale, scale);
+	C2D_DrawImageAt(img, x, y, uiDepth, &tint, scale, scale);
 }
 
 void termgfxDrawText(float x, float y, float scale, u32 color, const char* s)

@@ -2,6 +2,11 @@
 #include <string.h>
 #include "menu.h"
 #include "../gfx/termgfx.h"
+
+// Above the terminal's cell range (0.1..0.95). Draw order alone does not put
+// an overlay on top: the depth test does, and a panel at z=0 loses to the
+// glyphs of whatever is behind it.
+#define UI_Z 0.985f
 #include "phonebook.h"
 
 #define SCREEN_W 320
@@ -157,8 +162,9 @@ MenuAction menuUpdate(u32 kDown, u32 kHeld, touchPosition touch)
 
 void menuRender(void)
 {
+	termgfxSetTextDepth(UI_Z);
 	if (sizing) {
-		C2D_DrawRectSolid(0, 0, 0, SCREEN_W, SCREEN_H, 0xF0101018);
+		C2D_DrawRectSolid(0, 0, UI_Z, SCREEN_W, SCREEN_H, 0xFF101018);
 		termgfxDrawText(6, 8, 0.85f, 0xFFCCCCCC, "Terminal Size");
 		termgfxDrawText(SCREEN_W - 96, 11, 0.7f, 0xFF808080, "B cancels");
 		char lbl[16];
@@ -168,23 +174,24 @@ void menuRender(void)
 			float x = (k % SZ_COLS) * SZ_CELL_W;
 			float y = SZ_TOP + (k / SZ_COLS) * SZ_CELL_H;
 			if (k == sel)
-				C2D_DrawRectSolid(x + 2, y + 1, 0, SZ_CELL_W - 4,
+				C2D_DrawRectSolid(x + 2, y + 1, UI_Z, SZ_CELL_W - 4,
 				                  SZ_CELL_H - 2,
 				                  k == hot ? 0xFFC08040 : 0xFF603010);
 			snprintf(lbl, sizeof(lbl), "%ux%u", c, r);
 			termgfxDrawText(x + 12, y + 5, 0.85f,
 			                k == sel ? 0xFFFFFFFF : 0xFFBBBBBB, lbl);
 		}
+		termgfxSetTextDepth(0.5f);
 		return;
 	}
 
 	float h = NITEMS * ROW_H + 34;
 
 	// Dim what's behind so the menu reads as modal rather than as more UI
-	C2D_DrawRectSolid(0, 0, 0, SCREEN_W, SCREEN_H, 0xC0000000);
-	C2D_DrawRectSolid(PAD - 4, TOP - 4, 0, SCREEN_W - 2 * (PAD - 4), h + 8,
+	C2D_DrawRectSolid(0, 0, UI_Z, SCREEN_W, SCREEN_H, 0xFF0A0A10);
+	C2D_DrawRectSolid(PAD - 4, TOP - 4, UI_Z, SCREEN_W - 2 * (PAD - 4), h + 8,
 	                  0xFF202030);
-	C2D_DrawRectSolid(PAD - 2, TOP - 2, 0, SCREEN_W - 2 * (PAD - 2), h + 4,
+	C2D_DrawRectSolid(PAD - 2, TOP - 2, UI_Z, SCREEN_W - 2 * (PAD - 2), h + 4,
 	                  0xFF101018);
 
 	termgfxDrawText(PAD + 2, TOP + 4, 0.85f, 0xFFCCCCCC, "3dBBS");
@@ -195,11 +202,12 @@ void menuRender(void)
 		float y = LIST + i * ROW_H;
 		bool on = (i == sel);
 		if (on)
-			C2D_DrawRectSolid(PAD, y, 0, SCREEN_W - 2 * PAD, ROW_H - 2,
+			C2D_DrawRectSolid(PAD, y, UI_Z, SCREEN_W - 2 * PAD, ROW_H - 2,
 			                  i == hot ? 0xFFC08040 : 0xFF603010);
 		termgfxDrawText(PAD + 8, y + 3, 0.9f,
 		                on ? 0xFFFFFFFF : 0xFFAAAAAA, items[i].label);
 		termgfxDrawText(PAD + 8, y + 17, 0.6f,
 		                on ? 0xFFCCCCCC : 0xFF707070, items[i].hint);
 	}
+	termgfxSetTextDepth(0.5f);
 }
