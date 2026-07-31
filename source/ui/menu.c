@@ -2,6 +2,7 @@
 #include <string.h>
 #include "menu.h"
 #include "../gfx/termgfx.h"
+#include "phonebook.h"
 
 #define SCREEN_W 320
 #define SCREEN_H 240
@@ -17,6 +18,7 @@ typedef struct {
 static const Item items[] = {
 	{ "Resume",             "close this menu",                   MENU_NONE },
 	{ "Controller Mapping", "remap the pad, sticks and buttons", MENU_MAPPING },
+	{ "Terminal Size",      "change the grid for this session",  MENU_TERMSIZE },
 	{ "Quit",               "leave 3dBBS",                       MENU_QUIT },
 };
 #define NITEMS (int)(sizeof(items) / sizeof(items[0]))
@@ -25,6 +27,8 @@ static const Item items[] = {
 #define LIST (TOP + 30)
 
 static bool open_;
+static bool sizing;       // showing the geometry list rather than the menu
+static u16 pickCols, pickRows;
 static int sel;
 static int hot = -1;      // row under the finger
 static bool wasTouching;
@@ -43,9 +47,35 @@ void menuClose(void) { open_ = false; hot = -1; }
 void menuToggle(void)
 {
 	open_ = !open_;
+	sizing = false;
 	if (open_)
 		sel = 0;
 	hot = -1;
+}
+
+void menuPickedSize(u16* cols, u16* rows)
+{
+	if (cols) *cols = pickCols;
+	if (rows) *rows = pickRows;
+}
+
+// The geometry list reuses the phonebook's SyncTERM presets so the menu and
+// the dialing directory can never drift apart on what sizes exist.
+// Rows are derived, not fixed: with 13 presets a hardcoded 6 left the last
+// one outside the hit test and unreachable by touch.
+#define SZ_COLS 2
+#define SZ_ROWS ((pbSizePresetCount() + SZ_COLS - 1) / SZ_COLS)
+#define SZ_CELL_W (SCREEN_W / SZ_COLS)
+#define SZ_CELL_H 26
+#define SZ_TOP 34
+
+static int sizeCellAt(int px, int py)
+{
+	if (py < SZ_TOP || py >= SZ_TOP + SZ_ROWS * SZ_CELL_H)
+		return -1;
+	int c = px / SZ_CELL_W, r = (py - SZ_TOP) / SZ_CELL_H;
+	int k = r * SZ_COLS + c;
+	return (k >= 0 && k < pbSizePresetCount()) ? k : -1;
 }
 
 static int rowAt(int px, int py)
@@ -60,6 +90,34 @@ MenuAction menuUpdate(u32 kDown, u32 kHeld, touchPosition touch)
 {
 	MenuAction act = MENU_NONE;
 	bool touching = (kHeld & KEY_TOUCH) != 0;
+
+	if (sizing) {
+		int n = pbSizePresetCount();
+		if (kDown & KEY_B) { sizing = false; return MENU_NONE; }
+		if (kDown & KEY_DLEFT  && sel > 0) sel--;
+		if (kDown & KEY_DRIGHT && sel < n - 1) sel++;
+		if (kDown & KEY_DUP    && sel >= SZ_COLS) sel -= SZ_COLS;
+		if (kDown & KEY_DDOWN  && sel + SZ_COLS < n) sel += SZ_COLS;
+		int chosen = -1;
+		if (kDown & KEY_A) chosen = sel;
+		if (touching) {
+			held = touch;
+			int c = sizeCellAt(held.px, held.py);
+			if (c >= 0) sel = c;
+			hot = c;
+		} else if (wasTouching) {
+			chosen = sizeCellAt(held.px, held.py);
+			hot = -1;
+		}
+		wasTouching = touching;
+		if (chosen >= 0) {
+			pbSizePreset(chosen, &pickCols, &pickRows);
+			sizing = false;
+			menuClose();
+			return MENU_TERMSIZE;
+		}
+		return MENU_NONE;
+	}
 
 	if (kDown & KEY_DUP)   sel = (sel + NITEMS - 1) % NITEMS;
 	if (kDown & KEY_DDOWN) sel = (sel + 1) % NITEMS;
@@ -81,6 +139,14 @@ MenuAction menuUpdate(u32 kDown, u32 kHeld, touchPosition touch)
 	}
 	wasTouching = touching;
 
+	if (act == MENU_TERMSIZE) {
+		// Not an action yet — show the list and report only once a size is
+		// actually chosen.
+		sizing = true;
+		sel = 0;
+		hot = -1;
+		return MENU_NONE;
+	}
 	// Resume is the no-op entry: selecting it just closes.
 	if (act == MENU_NONE && (kDown & KEY_A) && items[sel].action == MENU_NONE)
 		menuClose();
@@ -91,6 +157,27 @@ MenuAction menuUpdate(u32 kDown, u32 kHeld, touchPosition touch)
 
 void menuRender(void)
 {
+	if (sizing) {
+		C2D_DrawRectSolid(0, 0, 0, SCREEN_W, SCREEN_H, 0xF0101018);
+		termgfxDrawText(6, 8, 0.85f, 0xFFCCCCCC, "Terminal Size");
+		termgfxDrawText(SCREEN_W - 96, 11, 0.7f, 0xFF808080, "B cancels");
+		char lbl[16];
+		for (int k = 0; k < pbSizePresetCount(); k++) {
+			u16 c, r;
+			pbSizePreset(k, &c, &r);
+			float x = (k % SZ_COLS) * SZ_CELL_W;
+			float y = SZ_TOP + (k / SZ_COLS) * SZ_CELL_H;
+			if (k == sel)
+				C2D_DrawRectSolid(x + 2, y + 1, 0, SZ_CELL_W - 4,
+				                  SZ_CELL_H - 2,
+				                  k == hot ? 0xFFC08040 : 0xFF603010);
+			snprintf(lbl, sizeof(lbl), "%ux%u", c, r);
+			termgfxDrawText(x + 12, y + 5, 0.85f,
+			                k == sel ? 0xFFFFFFFF : 0xFFBBBBBB, lbl);
+		}
+		return;
+	}
+
 	float h = NITEMS * ROW_H + 34;
 
 	// Dim what's behind so the menu reads as modal rather than as more UI

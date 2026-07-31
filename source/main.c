@@ -22,6 +22,7 @@
 #include "ui/menu.h"
 #include "ui/ctrlmap.h"
 #include "ui/ctrlin.h"
+#include "ui/ctrlview.h"
 #include "term/keymode.h"
 #include "proto/apc.h"
 #include "audio/apcaudio.h"
@@ -290,6 +291,7 @@ int main(void)
 	menuInit();
 	cmLoad();
 	ctrlinInit(kbdSend);
+	ctrlviewInit(promptText);
 	pbviewInit(promptText, kbdToggle);
 	audioInit(hookRespond); // needs sdmc:/3ds/dspfirm.cdc; silent without it
 	apcInit(hookRespond);
@@ -327,8 +329,16 @@ int main(void)
 		// START opens the menu; quitting lives in there now. START and
 		// SELECT stay reserved from controller remapping so the menu is
 		// always reachable whatever the active mapping does.
-		if (kDown & KEY_START)
+		// The mapping editor owns the bottom screen while it is up; START
+		// backs out of it rather than stacking another menu on top.
+		if (ctrlviewIsOpen()) {
+			ctrlinReleaseAll();
+			ctrlviewUpdate(kDown, kHeld, touch);
+			kDown = kHeld = 0;
+			touch.px = touch.py = 0;
+		} else if (kDown & KEY_START) {
 			menuToggle();
+		}
 		if (menuIsOpen()) {
 			// Nothing should stay held while the menu is up, or a door sees
 			// a key stuck down for as long as the menu is open.
@@ -336,6 +346,21 @@ int main(void)
 			MenuAction ma = menuUpdate(kDown, kHeld, touch);
 			if (ma == MENU_QUIT)
 				break;
+			if (ma == MENU_MAPPING)
+				ctrlviewOpen();
+			if (ma == MENU_TERMSIZE) {
+				u16 c, r;
+				menuPickedSize(&c, &r);
+				cfgCols = c;
+				cfgRows = r;
+				termResize(&term, c, r);
+				if (mode == MODE_TALL)
+					applyTallRows();
+				telnetNotifySize(term.cols, term.rows);
+				// Stick for next time: the board you are on is the one you
+				// just picked a size for.
+				pbSetSize(pbSelected(), c, r);
+			}
 			// Swallow everything else: nothing behind the menu should see
 			// this frame's input.
 			kDown = kHeld = 0;
@@ -693,7 +718,9 @@ int main(void)
 		termgfxDrawText(2, 231, 0.5f, 0xFF00CCCC, perf);
 #endif
 
-		if (menuIsOpen())
+		if (ctrlviewIsOpen())
+			ctrlviewRender();
+		else if (menuIsOpen())
 			menuRender();
 
 		C3D_FrameEnd(0);
