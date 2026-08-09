@@ -120,7 +120,7 @@ raises the throughput ceiling.
 | Disconnected | bottom screen is the **phonebook editor**: tap a board to select, tap again to dial; buttons DIAL / EDIT / USER / PROTO / SIZE / ADD / DEL |
 | D-pad up/down, A, Y, X (disconnected) | select, dial, set credentials, toggle protocol |
 | Tap status bar (connected) | disconnect |
-| SELECT | display mode: keyboard → mirror → tall |
+| SELECT | display mode: toggles keyboard ↔ mirror |
 | Touch keyboard | input (shift/ctrl sticky); taps on mirrored terminal send mouse clicks |
 | D-pad (connected) | arrow keys; A=Enter B=Backspace X=Space Y=Esc — all remappable |
 | START | menu: controller mapping, terminal size, quit |
@@ -240,8 +240,8 @@ still wins — and `CSI 0;0 t` ("restore default") returns to the board's
 configured size rather than a hardcoded 80x25.
 
 132 columns on a 400px screen is about three pixels per glyph. It is
-offered because SyncTERM offers it and boards are authored for it; it is
-readable in **tall** mode (SELECT) and not much else. 132x60 is also the
+offered because SyncTERM offers it and boards are authored for it, not
+because it is comfortable to read on this hardware. 132x60 is also the
 ceiling — it's the largest screen CTerm documents, and the renderer's
 vertex and command buffers are sized from exactly that grid.
 

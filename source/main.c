@@ -37,7 +37,7 @@
 
 #define DEV_MAC_IP "192.168.1.61"  // dev telemetry collector (see tests/)
 
-enum { MODE_KBD, MODE_MIRROR, MODE_TALL, MODE_COUNT };
+enum { MODE_KBD, MODE_MIRROR };
 
 enum { NET_IDLE, NET_CONNECTING, NET_CONNECTED, NET_FAILED, NET_CLOSED };
 
@@ -49,8 +49,7 @@ static int netState = NET_IDLE;
 static bool connectPending;
 
 // Geometry this session is configured for: the dialed board's preference,
-// or whatever the BBS later asked for. MODE_TALL computes its own row count
-// from the screen, so this is what we restore when leaving it.
+// or whatever the BBS later asked for.
 static int cfgCols = PB_DEF_COLS, cfgRows = PB_DEF_ROWS;
 
 #ifndef RELEASE_BUILD
@@ -70,14 +69,6 @@ static void hookRespond(const u8* data, int len)
 	telnetSend(data, len);
 }
 
-static void applyTallRows(void)
-{
-	// Width-fit scale across the narrower (bottom) screen; rows fill 2x240px
-	float s = 320.0f / (term.cols * 8);
-	int rows = (int)(480.0f / (16.0f * s));
-	termResize(&term, term.cols, rows);
-}
-
 static void hookResize(int cols, int rows)
 {
 	// "Restore default" means the board's configured size here, not a
@@ -87,8 +78,6 @@ static void hookResize(int cols, int rows)
 	cfgCols = cols;
 	cfgRows = rows;
 	termResize(&term, cols, rows);
-	if (mode == MODE_TALL)
-		applyTallRows();
 	telnetNotifySize(term.cols, term.rows);
 }
 
@@ -215,21 +204,6 @@ static void fmtBps(u32 bytesPerSec, char* out, size_t cap)
 		snprintf(out, cap, "%.2fM", bps / 1000000.0);
 }
 
-static void setMode(int m)
-{
-	if (m == mode)
-		return;
-	bool wasTall = (mode == MODE_TALL);
-	mode = m;
-	if (mode == MODE_TALL) {
-		applyTallRows();
-		telnetNotifySize(term.cols, term.rows);
-	} else if (wasTall) {
-		termResize(&term, cfgCols, cfgRows);
-		telnetNotifySize(term.cols, term.rows);
-	}
-}
-
 int main(void)
 {
 	gfxInitDefault();
@@ -354,8 +328,6 @@ int main(void)
 				cfgCols = c;
 				cfgRows = r;
 				termResize(&term, c, r);
-				if (mode == MODE_TALL)
-					applyTallRows();
 				telnetNotifySize(term.cols, term.rows);
 				// Stick for next time: the board you are on is the one you
 				// just picked a size for.
@@ -367,7 +339,7 @@ int main(void)
 			touch.px = touch.py = 0;
 		}
 		if (kDown & KEY_SELECT)
-			setMode((mode + 1) % MODE_COUNT);
+			mode = (mode == MODE_KBD) ? MODE_MIRROR : MODE_KBD;
 #ifndef RELEASE_BUILD
 		if ((kDown & KEY_R) && shotStep < 0) {
 			u16 fw = 0, fh = 0;
@@ -404,8 +376,6 @@ int main(void)
 				cfgCols = c;
 				cfgRows = r;
 				termResize(&term, c, r);
-				if (mode == MODE_TALL)
-					applyTallRows();
 				telnetSetSize(term.cols, term.rows);
 			}
 			termReset(&term);
@@ -428,12 +398,7 @@ int main(void)
 			kbdUpdate(kDown, kHeld, touch);
 		} else if (conn && (kDown & KEY_TOUCH)) {
 			TermView bv;
-			if (mode == MODE_MIRROR) {
-				termgfxFitView(&term, 320, 240, &bv);
-			} else {
-				float s = 320.0f / (term.cols * 8);
-				termgfxSpanView(&term, 320, 240, s, 240.0f, &bv);
-			}
+			termgfxFitView(&term, 320, 240, &bv);
 			int col, row;
 			if (termgfxCellAt(&term, &bv, touch.px, touch.py, &col, &row))
 				sendMouseClick(col, row);
@@ -636,12 +601,7 @@ int main(void)
 		bool termOnTop = conn || netState == NET_CLOSED;
 		if (termOnTop) {
 			TermView tv;
-			if (mode == MODE_TALL) {
-				float s = 320.0f / (term.cols * 8);
-				termgfxSpanView(&term, 400, 240, s, 0.0f, &tv);
-			} else {
-				termgfxFitView(&term, 400, 240, &tv);
-			}
+			termgfxFitView(&term, 400, 240, &tv);
 
 			// BBS-driven 3D scene renders first; the terminal draws over it
 			// with black backgrounds skipped, so the scene shows through
@@ -703,12 +663,7 @@ int main(void)
 			kbdRender(status, conn);
 		} else {
 			TermView bv;
-			if (mode == MODE_MIRROR) {
-				termgfxFitView(&term, 320, 240, &bv);
-			} else {
-				float s = 320.0f / (term.cols * 8);
-				termgfxSpanView(&term, 320, 240, s, 240.0f, &bv);
-			}
+			termgfxFitView(&term, 320, 240, &bv);
 			termgfxRenderTermView(&term, frame, &bv, NULL);
 			siximgDraw(&bv);
 		}

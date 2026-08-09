@@ -184,14 +184,18 @@ protocol documented here: detection via the CTerm DA banner / `SyncTERM:VER` /
 `3DS:Query`, and the escape sequences in 4.2. Anything that emits those
 sequences works.
 
-## 4.5 Display modes (SELECT cycles; implemented in Phase 1.5)
+## 4.5 Display modes (SELECT toggles; implemented in Phase 1.5)
 
 - **keyboard** (primary): terminal on top, touch QWERTY + status bar on bottom
 - **mirror**: terminal on both screens; taps on the bottom terminal send real
   mouse reports (CSI ?9 X10, ?1000 normal, ?1006 SGR tracking — the modes
   Synchronet hotspots use), so BBS click handlers work from the touchscreen
-- **tall**: one terminal spanning both screens at width-fit scale — 80 cols
-  gives an 80×60 grid, auto-resized and NAWS-reported so the BBS gets the rows
+
+A third **tall** mode — one terminal spanning both screens at width-fit
+scale, auto-resizing the grid to match — was implemented and then removed:
+resizing the session out from under the BBS to suit a local display choice
+is the wrong trade, and the mode was not worth a third stop in what should
+be a one-press toggle between typing and clicking.
 
 Phonebook: `sdmc:/3dBBS/phonebook.txt` (`name|host|port` per line), created
 with futureland.today + vert.synchro.net defaults; D-pad cycles entries while
@@ -291,7 +295,7 @@ still overrides it for the session.
 `PB_MAX_COLS`/`PB_MAX_ROWS` (132x60, the largest grid cterm.adoc
 documents) are load-bearing, not decorative: the renderer emits up to two
 citro2d objects per cell (background quad + glyph) across three views per
-frame (both stereo eyes plus the bottom screen in mirror/tall), and
+frame (both stereo eyes plus the bottom screen in mirror mode), and
 `C2D_Init` in `main.c` is sized from exactly that product. citro2d stops
 drawing when its vertex buffer fills and an overflowing GPU command buffer
 svcBreaks outright, so raising the clamp means raising both buffers with

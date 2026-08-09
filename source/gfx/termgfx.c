@@ -108,17 +108,6 @@ void termgfxFitView(const Terminal* t, int screenW, int screenH, TermView* v)
 	v->screenH = screenH;
 }
 
-void termgfxSpanView(const Terminal* t, int screenW, int screenH, float scale,
-                     float yOffPix, TermView* v)
-{
-	float gridW = t->cols * GLYPH_W;
-	v->sx = v->sy = scale;   // span mode is width-fit, so cells stay square
-	v->ox = (screenW - gridW * scale) / 2.0f;
-	v->oy = -yOffPix;
-	v->screenW = screenW;
-	v->screenH = screenH;
-}
-
 bool termgfxCellAt(const Terminal* t, const TermView* v, int px, int py,
                    int* col, int* row)
 {
