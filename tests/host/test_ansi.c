@@ -347,6 +347,15 @@ int main(void)
 		feed("\x1B[=2;9999*z");
 		CHECK(term.layerDepth[2] > 17.9f && term.layerDepth[2] < 18.1f,
 		      "depth clamps to 18");
+		// Pop-out (protocol 0.4): CSI = Ps ; Pd + z is a depth in front of
+		// the glass, not a layer select
+		feed("\x1B[=0z\x1B[=5;135+z");
+		CHECK(term.layerDepth[5] > -1.36f && term.layerDepth[5] < -1.34f,
+		      "CSI = 5;135 + z sets depth -1.35 (in front)");
+		CHECK(term.activeLayer == 0, "+ z form does not select a layer");
+		feed("\x1B[=6;500+z");
+		CHECK(term.layerDepth[6] > -1.81f && term.layerDepth[6] < -1.79f,
+		      "pop-out clamps to -1.8");
 		// Plain CSI z (no '=') is not ours: swallowed harmlessly
 		int keep = term.activeLayer;
 		feed("\x1B[5z");

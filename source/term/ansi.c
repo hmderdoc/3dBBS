@@ -483,8 +483,8 @@ void ansiFeed(AnsiParser* p, const u8* data, int len)
 				p->paramSeen = true;
 			} else if (c == '<' || c == '=' || c == '?' || c == '>') {
 				p->priv = c;
-			} else if (c == ' ' || c == '!' || c == '"' || c == '$' || c == '*') {
-				p->intermediate = c;
+			} else if (c == ' ' || c == '!' || c == '"' || c == '$' || c == '*' || c == '+') {
+				p->intermediate = c; // '+' carries the 0.4 pop-out form of CSI = z
 			} else if (c == 0x1B) {
 				p->state = ST_ESC; // malformed; restart
 			} else if (c >= 0x40 && c <= 0x7E) {
