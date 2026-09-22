@@ -324,15 +324,20 @@ static void csiDispatch(AnsiParser* p, u8 final)
 			}
 			break;
 		case 'z':
-			// Text depth layers (protocol 0.3):
-			//   CSI = Ps z       select active layer (0..15)
+			// Text depth layers (protocol 0.3, pop-out since 0.4):
+			//   CSI = Ps z         select active layer (0..15)
 			//   CSI = Ps ; Pd * z  set layer Ps depth to Pd centi-world-
 			//                      units behind the glass (0 = glass)
+			//   CSI = Ps ; Pd + z  set layer Ps depth to Pd centi-world-
+			//                      units in front of the glass (pop-out)
 			if (p->priv == '=') {
 				if (p->intermediate == '*')
 					termSetLayerDepth(t, param(p, 0, 0),
 					                  param(p, 1, 0) / 100.0f);
-				else
+				else if (p->intermediate == '+')
+					termSetLayerDepth(t, param(p, 0, 0),
+					                  -param(p, 1, 0) / 100.0f);
+				else if (p->intermediate == 0)
 					termSelectLayer(t, param(p, 0, 0));
 			}
 			break;

@@ -26,10 +26,11 @@ specifically.
 | `CSI 0 c` (plain DA — what Synchronet's `*` autodetect sends) | `CSI = 67;84;101;114;109;1;332 c` ("CTerm" + revision 1.332) |
 | `CSI < 0 c` | `CSI < 0;2;4;7 c` (capabilities: 2=bright bg, 4=pixel ops/sixel, 7=mouse) |
 | telnet TTYPE | `syncterm` |
-| `APC SyncTERM:VER ST` | `APC SyncTERM:VER;3dBBS 0.3 ST` |
+| `APC SyncTERM:VER ST` | `APC SyncTERM:VER;3dBBS 0.4 ST` |
 | `APC 3DS:Query ST` | `APC 3DS:Ver;0;3 ST` |
 
 Protocol 0.3 adds **text depth layers** (§7); gate them on minor >= 3.
+Protocol 0.4 lets a text layer sit **in front of** the glass; gate that on minor >= 4.
 
 On Synchronet with a `*` terminal type, `console.cterm_version` will be
 `1332` after logon — gate SyncTERM-level features on that. To detect 3dBBS
@@ -181,7 +182,7 @@ JS one-liner shape (Synchronet): pack with a byte array and `base64_encode`,
 `C;S` it, `Mesh;Load` it, `Obj;Add` it. The pyramid in
 `tests/stress_server.py::send_3d_demo` is a complete worked example.
 
-## 7. Text depth layers (`CSI = ... z`) — protocol 0.3
+## 7. Text depth layers (`CSI = ... z`) — protocol 0.3, pop-out 0.4
 
 Terminal text no longer has to sit at the glass. Every cell carries a
 **layer** (0–15) stamped when it is written; each layer has a BBS-set depth,
@@ -193,6 +194,9 @@ not touch it); `ESC c` resets everything to the classic single-plane look.
 CSI = Ps z            select the active text layer (Ps = 0..15, clamped)
 CSI = Ps ; Pd * z     set layer Ps depth: Pd centi-world-units BEHIND the
                       glass (0 = at the glass; 150 = 1.5 units; clamp 0..1800)
+CSI = Ps ; Pd + z     set layer Ps depth: Pd centi-world-units IN FRONT of the
+                      glass — the layer pops out of the screen (clamp 0..180;
+                      180 leaves it 0.2 units from the lens). Protocol 0.4.
 ```
 
 - Writes, erases and fills stamp the active layer; scroll/insert/delete ops
@@ -202,7 +206,12 @@ CSI = Ps ; Pd * z     set layer Ps depth: Pd centi-world-units BEHIND the
   disparity as a scene vertex at camera distance 3.5 (glass = 2.0). Text can
   visually sit ON a scene object.
 - The user's 3D slider scales everything; slider at zero renders the classic
-  flat screen. Old clients ignore both sequences harmlessly.
+  flat screen. Old clients ignore all of these harmlessly. A 0.3 client
+  parses the `+ z` form as a layer select, so after defining depths select
+  the layer you write next explicitly (`CSI = 0 z`); on 0.3 a popped-out
+  layer then simply sits at the glass.
+- Popped-out text obeys the same window-violation rule as meshes: keep it
+  away from the screen edges.
 - Layer 0 at depth 0 is the default: a BBS that never emits `= z` sequences
   gets today's behavior byte-for-byte.
 - Suggested authoring: keep interactive/focused UI at 0–0.4, mid content
@@ -215,7 +224,7 @@ CSI = Ps ; Pd * z     set layer Ps depth: Pd centi-world-units BEHIND the
 1. (Synchronet does DA autodetect for terminal '*' users automatically)
 2. gate:      console.cterm_version >= 1332   -> SyncTERM-level features OK
 3. probe:     APC 3DS:Query ST                -> reply => 3dBBS: 3D/audio/sixel all safe
-              (minor >= 3 => text depth layers too)
+              (minor >= 3 => text depth layers too; minor >= 4 => pop-out)
 4. assets:    C;L to dedup, C;S what's missing
 5. drive:     audio / sixel / 3D / text layers as above; degrade to ANSI when
               the probe times out

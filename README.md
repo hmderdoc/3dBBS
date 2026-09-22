@@ -298,7 +298,7 @@ white. Needs `mcu::HWC`; if that can't be opened the LED is left alone.
 Working: terminal core (truecolor, iCE, DECSTBM, dynamic geometry + NAWS),
 SyncTERM-compatible identification and query surface, APC audio engine with
 JIT streaming, sixel with correct scroll/overwrite lifetime, 3D scene
-protocol v1, text depth layers (protocol 0.3 — terminal text at real stereo
+protocol v1, text depth layers (protocol 0.3, pop-out in 0.4 — terminal text at real stereo
 depths, PROTOCOL.md §7), three-thread architecture (net+render / APC worker /
 SD flush), telnet/rlogin/SSH, per-board terminal geometry, effective-speed
 readout, lid-close keepalive, RGB LED data indicator, TheDraw-font splash.

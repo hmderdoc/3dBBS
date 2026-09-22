@@ -12,7 +12,7 @@
 #define TERM_MAX_COLS 240
 #define TERM_MAX_ROWS 100
 
-// Text depth layers (protocol 0.3): every cell carries the layer that was
+// Text depth layers (protocol 0.3; pop-out 0.4): every cell carries the layer that was
 // active when it was written; each layer has a BBS-set stereo depth in
 // world units behind the glass (0 = at the glass, the classic look). The
 // renderer draws layers deep-to-near with per-eye disparity, so text
@@ -102,7 +102,7 @@ void termInsertChars(Terminal* t, int n);
 void termDeleteChars(Terminal* t, int n);
 void termEraseChars(Terminal* t, int n);
 
-// Text depth layers (clamped; depth clamped to 0..18 world units)
+// Text depth layers (clamped; depth -1.8 (in front of the glass) .. 18 world units)
 void termSelectLayer(Terminal* t, int layer);
 void termSetLayerDepth(Terminal* t, int layer, float depth);
 

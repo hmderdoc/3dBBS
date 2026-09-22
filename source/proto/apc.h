@@ -20,7 +20,7 @@
 
 #define APC_VER_STRING "3dBBS 0.2"
 #define APC_3DS_MAJOR 0
-#define APC_3DS_MINOR 3   // 0.3: text depth layers (CSI = z)
+#define APC_3DS_MINOR 4   // 0.3: text depth layers (CSI = z); 0.4: pop-out (CSI = Ps ; Pd + z)
 
 typedef void (*ApcRespondFn)(const u8* data, int len);
 

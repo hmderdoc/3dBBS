@@ -103,7 +103,9 @@ void termSetLayerDepth(Terminal* t, int layer, float depth)
 {
 	if (layer < 0 || layer >= TERM_TEXT_LAYERS)
 		return;
-	if (depth < 0.0f) depth = 0.0f;
+	// Negative is in front of the glass. The convergence plane sits 2 units
+	// from the camera, so -1.8 keeps the layer 0.2 in front of the lens.
+	if (depth < -1.8f) depth = -1.8f;
 	if (depth > 18.0f) depth = 18.0f;
 	t->layerDepth[layer] = depth;
 	t->rev++;

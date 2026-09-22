@@ -98,11 +98,12 @@ class Client(threading.Thread):
         print("[3d] pyramid uploaded and spinning")
 
     def send_layer_demo(self):
-        """Text depth layers (protocol 0.3): three lines at three depths."""
-        self.send(b"\x1b[=1;80*z\x1b[=2;300*z")     # layer 1 = 0.8u, layer 2 = 3u deep
+        """Text depth layers (protocol 0.3): three lines at three depths, and one popped out (0.4)."""
+        self.send(b"\x1b[=1;80*z\x1b[=2;300*z\x1b[=3;120+z\x1b[=0z")   # layer 1 = 0.8u, layer 2 = 3u deep, layer 3 = 1.2u in front
         self.send(b"\x1b[5;10H\x1b[=2z\x1b[36mdeep background text (3.0)")
         self.send(b"\x1b[7;14H\x1b[=1z\x1b[33mmid-depth text (0.8)")
         self.send(b"\x1b[9;18H\x1b[=0z\x1b[97mglass-level text (0.0)")
+        self.send(b"\x1b[11;22H\x1b[=3z\x1b[95mpopped-out text (-1.2)\x1b[=0z")
         self.send(b"\x1b[0m")
         print("[3d] text layers demo placed (slide the 3D depth slider)")
 
