@@ -123,7 +123,7 @@ raises the throughput ceiling.
 | SELECT | display mode: toggles keyboard ↔ mirror |
 | Touch keyboard | input (shift/ctrl sticky); taps on mirrored terminal send mouse clicks |
 | D-pad (connected) | arrow keys; A=Enter B=Backspace X=Space Y=Esc — all remappable |
-| START | menu: controller mapping, terminal size, quit |
+| START | menu: controller mapping, terminal size, depth info, quit (title shows the build version) |
 
 ## Connecting and autologin
 
@@ -198,9 +198,13 @@ Font credits are in [assets/TDF-FONTS-CREDITS.md](assets/TDF-FONTS-CREDITS.md).
 
 ## Controls and key reporting
 
-**START opens a menu** — controller mapping, terminal size, and quit. START
-and SELECT are the only controls that can't be remapped, so a mapping can
-never lock you out of it.
+**START opens a menu** — controller mapping, terminal size, depth info, and
+quit; its title shows the installed build's version. START and SELECT are the
+only controls that can't be remapped, so a mapping can never lock you out of
+it. *Depth Info* overlays the text-layer state on the top screen — slider,
+terminal size, and every layer's depth, per-eye shift and cell count as this
+device parsed it — so a file that renders flat can be pinned to the stream or
+the draw instead of guessed at.
 
 Named controller mappings live in `sdmc:/3dBBS/controls.txt` and are edited
 on-device. Every button, the D-pad, the circle pad and the C-stick can be
