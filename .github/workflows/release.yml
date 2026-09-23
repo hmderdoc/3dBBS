@@ -47,7 +47,9 @@ jobs:
           bash tools/build_libssh2.sh
 
       - name: Build RELEASE .3dsx + .cia
-        run: make RELEASE=1 cia MAKEROM=makerom BANNERTOOL=bannertool
+        # The shallow checkout has no tag history for git describe, so the
+        # menu's version string is the ref being built (the tag).
+        run: make RELEASE=1 cia MAKEROM=makerom BANNERTOOL=bannertool APP_VERSION="${GITHUB_REF_NAME}"
 
       - name: Generate install QR
         run: |

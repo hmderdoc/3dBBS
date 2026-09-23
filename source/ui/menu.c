@@ -2,6 +2,7 @@
 #include <string.h>
 #include "menu.h"
 #include "../gfx/termgfx.h"
+#include "../sys/version.h"
 
 // Above the terminal's cell range (0.1..0.95). Draw order alone does not put
 // an overlay on top: the depth test does, and a panel at z=0 loses to the
@@ -24,6 +25,7 @@ static const Item items[] = {
 	{ "Resume",             "close this menu",                   MENU_NONE },
 	{ "Controller Mapping", "remap the pad, sticks and buttons", MENU_MAPPING },
 	{ "Terminal Size",      "change the grid for this session",  MENU_TERMSIZE },
+	{ "Depth Info",         "text-layer depths over the top screen", MENU_DEPTHINFO },
 	{ "Quit",               "leave 3dBBS",                       MENU_QUIT },
 };
 #define NITEMS (int)(sizeof(items) / sizeof(items[0]))
@@ -194,7 +196,7 @@ void menuRender(void)
 	C2D_DrawRectSolid(PAD - 2, TOP - 2, UI_Z, SCREEN_W - 2 * (PAD - 2), h + 4,
 	                  0xFF101018);
 
-	termgfxDrawText(PAD + 2, TOP + 4, 0.85f, 0xFFCCCCCC, "3dBBS");
+	termgfxDrawText(PAD + 2, TOP + 4, 0.85f, 0xFFCCCCCC, "3dBBS " APP_VERSION);
 	termgfxDrawText(SCREEN_W - PAD - termgfxTextWidth(0.7f, "START closes") - 2,
 	                TOP + 7, 0.7f, 0xFF808080, "START closes");
 

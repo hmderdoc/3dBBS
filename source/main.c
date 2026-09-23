@@ -32,6 +32,7 @@
 #include "gfx/siximg.h"
 #include "gfx/tdfsplash.h"
 #include "sys/settings.h"
+#include "sys/version.h"
 #include "sys/power.h"
 #include "sys/led.h"
 
@@ -61,6 +62,55 @@ static int cfgCols = PB_DEF_COLS, cfgRows = PB_DEF_ROWS;
 #define SHOT_IOD   0.25f
 static int shotStep = -1;   // -1 idle, else the view being rendered
 #endif
+
+// START menu > Depth Info: the text-layer state exactly as this device
+// parsed it, over both eyes at zero disparity. When a file renders flat this
+// says whether the build, the byte stream or the draw is to blame, instead
+// of guessing from the .ans on a desk.
+static bool depthInfo;
+
+static void drawDepthInfo(const Terminal* t, float slider, const float* leftPx)
+{
+	int count[TERM_TEXT_LAYERS] = { 0 };
+	for (int i = 0; i < t->cols * t->rows; i++)
+		if (t->cells[i].layer < TERM_TEXT_LAYERS)
+			count[t->cells[i].layer]++;
+
+	// Mirror termgfxRenderTermView's decision so the overlay reports the
+	// path it took, not the one it should have taken.
+	int nPresent = 0;
+	bool anyShift = false;
+	for (int l = 0; l < TERM_TEXT_LAYERS; l++)
+		if (count[l]) {
+			nPresent++;
+			if (leftPx[l] != 0.0f)
+				anyShift = true;
+		}
+
+	const float sc = 0.7f, lh = 16.0f * sc + 1.0f;
+	int lines = 2 + nPresent;
+	C2D_DrawRectSolid(0, 0, 0.98f, 400, 4 + lines * lh, 0xE0000000);
+	termgfxSetTextDepth(0.985f);
+	char s[96];
+	float y = 2.0f;
+	snprintf(s, sizeof s, "3dBBS %s  slider %.2f  term %dx%d  active L%d",
+	         APP_VERSION, slider, t->cols, t->rows, t->activeLayer);
+	termgfxDrawText(4, y, sc, 0xFFFFFFFF, s);
+	y += lh;
+	snprintf(s, sizeof s, "draw: %s  (%d layers on screen, shift %s)",
+	         (!anyShift || nPresent <= 1) ? "FLAT" : "layered",
+	         nPresent, anyShift ? "yes" : "none");
+	termgfxDrawText(4, y, sc, 0xFFFFFF80, s);
+	for (int l = 0; l < TERM_TEXT_LAYERS; l++) {
+		if (!count[l])
+			continue;
+		y += lh;
+		snprintf(s, sizeof s, "L%-2d depth %+5.2f  left eye %+6.1fpx  cells %4d",
+		         l, t->layerDepth[l], leftPx[l], count[l]);
+		termgfxDrawText(4, y, sc, leftPx[l] != 0.0f ? 0xFF80FF80 : 0xFFC0C0C0, s);
+	}
+	termgfxSetTextDepth(0.5f);
+}
 
 // --- parser hooks ---
 
@@ -333,6 +383,8 @@ int main(void)
 				// just picked a size for.
 				pbSetSize(pbSelected(), c, r);
 			}
+			if (ma == MENU_DEPTHINFO)
+				depthInfo = !depthInfo;
 			// Swallow everything else: nothing behind the menu should see
 			// this frame's input.
 			kDown = kHeld = 0;
@@ -629,6 +681,12 @@ int main(void)
 			C2D_SceneBegin(topL);
 			termgfxRenderTermView(&term, frame, &tv, textShifts);
 			siximgDraw(&tv);
+			// Both eyes show the left eye's numbers: an overlay that
+			// differed per eye would shimmer instead of read.
+			float leftShifts[TERM_TEXT_LAYERS];
+			memcpy(leftShifts, textShifts, sizeof leftShifts);
+			if (depthInfo)
+				drawDepthInfo(&term, slider, leftShifts);
 			if (iod > 0.0f) {
 				scene3dTextShifts(iod, term.layerDepth,
 				                  TERM_TEXT_LAYERS, textShifts);
@@ -637,6 +695,8 @@ int main(void)
 				C2D_SceneBegin(topR);
 				termgfxRenderTermView(&term, frame, &tv, textShifts);
 				siximgDraw(&tv);
+				if (depthInfo)
+					drawDepthInfo(&term, slider, leftShifts);
 			}
 		} else {
 			// Pre-login the top screen is the splash: the product name in

@@ -57,6 +57,13 @@ CFLAGS	:=	-g -Wall -O2 -mword-relocations \
 
 CFLAGS	+=	$(INCLUDE) -D__3DS__
 
+# The build's identity, shown in the START menu so an installed binary can
+# be told from the one you meant to install: the tag when built at one, else
+# the nearest tag plus commit (and -dirty). Override with APP_VERSION=...
+APP_VERSION	?=	$(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+CFLAGS	+=	-DAPP_VERSION=\"$(APP_VERSION)\"
+export APP_VERSION
+
 # `make RELEASE=1` builds without dev scaffolding: no telemetry beacon,
 # no perf overlay, no L-button sixel probe, no dev-machine phonebook pins.
 ifneq ($(strip $(RELEASE)),)

@@ -14,6 +14,7 @@ typedef enum {
 	MENU_QUIT,        // caller should leave the main loop
 	MENU_MAPPING,     // open the controller-mapping screen
 	MENU_TERMSIZE,    // a geometry was picked; read it with menuPickedSize
+	MENU_DEPTHINFO,   // toggle the text-layer depth overlay on the top screen
 } MenuAction;
 
 // Valid after MENU_TERMSIZE: the geometry the user chose.
